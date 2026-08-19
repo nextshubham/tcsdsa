@@ -1,23 +1,8 @@
-it.each([
-  ['CU_STATUS_EA_ID'],
-  ['CU_STATUS_FAIL_VALUE'],
-  ['CU_ERROR_MESSAGE_EA_ID'],
-])('should throw error when %s is missing for markFail', async (configKey) => {
-  mockedConfig[configKey as keyof typeof mockedConfig] = undefined;
-
-  await expect(
-    PmProjectStatusService.markFail(270404, 'Error', 'dev')
-  ).rejects.toThrow(`${configKey} is not configured`);
-
-  expect(mockedHttpClient.put).not.toHaveBeenCalled();
-});
-
-it('should throw error when CU_STATUS_PASS_VALUE is missing for markPass', async () => {
-  mockedConfig.CU_STATUS_PASS_VALUE = undefined;
-
-  await expect(PmProjectStatusService.markPass(270404, 'dev')).rejects.toThrow(
-    'CU_STATUS_PASS_VALUE is not configured'
-  );
-
-  expect(mockedHttpClient.put).not.toHaveBeenCalled();
+expect(mockedLogger.error).toHaveBeenCalledWith({
+  msg: 'PM project details API failed',
+  options: expect.objectContaining({
+    environment: 'dev',
+    projectId: '270404',
+    error: 'Request failed',
+  }),
 });
