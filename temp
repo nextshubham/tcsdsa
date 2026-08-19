@@ -1,26 +1,26 @@
-private static sanitizeErrorMessage(errorMessage: string): string {
-  const passwordKey = ['pass', 'word'].join('');
+type ProjectId = string | number;
+type TaskId = string | number;
 
-  const sensitiveKeys = [
-    'client_secret',
-    'client_id',
-    'access_token',
-    passwordKey,
-  ];
+type OptionalProjectId = ProjectId | undefined;
+type OptionalTaskId = TaskId | undefined;
 
-  const sensitiveKeyPattern = sensitiveKeys.join('|');
-
-  const sanitizedErrorMessage = errorMessage
-    .replace(/Bearer\s+[a-z0-9._~+/=-]+/gi, 'Bearer [MASKED]')
-    .replace(/Basic\s+[a-z0-9+/=-]+/gi, 'Basic [MASKED]')
-    .replace(
-      new RegExp(`(${sensitiveKeyPattern})["'=:\\s]+[^"',\\s}]+`, 'gi'),
-      '$1=[MASKED]'
-    )
-    .trim();
-
-  return sanitizedErrorMessage.slice(
-    0,
-    PmProjectStatusService.MAX_ERROR_MESSAGE_LENGTH
-  );
+private static extractProjectId(
+  payload: CuNodeWebhookPayload
+): OptionalProjectId {
+  return payload.body?.projectId ?? payload.Body?.project_id ?? payload.Body?.projectId;
 }
+
+private static extractTaskId(payload: CuNodeWebhookPayload): OptionalTaskId {
+  return payload.body?.taskId ?? payload.ObjectId;
+}
+
+private static async markProjectFailSafely(
+  projectId: OptionalProjectId,
+  environment: string,
+  error: unknown
+): Promise<void> {
+
+private static async closeTaskSafely(
+  taskId: TaskId,
+  environment: string
+): Promise<void> {
