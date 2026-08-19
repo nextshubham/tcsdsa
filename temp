@@ -1,16 +1,17 @@
-type PmClassificationWebhookServiceResponse = Awaited<
-  ReturnType<typeof PmClassificationWebhookService.process>
->;
-
-const successResponse: PmClassificationWebhookServiceResponse = {
-  message: 'PM classification webhook processed successfully',
+const partialSuccessResponse: PmClassificationWebhookServiceResponse = {
+  message: 'PM classification webhook processed with warnings',
   environment: 'dev',
   triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
   projectId: 270404,
-  status: 'SUCCESS',
+  status: 'PARTIAL_SUCCESS',
   inputParameterEaId: '36601',
   inputParameterEaResolvedBy: 'PAYLOAD',
   createdClassifications: [],
   relationshipsProcessed: [],
-  warnings: [],
+  warnings: [
+    {
+      extAttrId: '53001',
+      message: 'Relationship/follower processing failed.',
+    },
+  ],
 };
