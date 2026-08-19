@@ -1,20 +1,28 @@
-const partialSuccessResponse: PmClassificationWebhookServiceResponse = {
-  message: 'PM classification webhook processed with warnings',
+const successResponse: PmClassificationWebhookServiceResponse = {
+  message: 'PM classification webhook processed successfully',
   environment: 'dev',
   triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
   projectId: 270404,
-  status: 'PARTIAL_SUCCESS',
+  status: 'SUCCESS',
   inputParameterEaId: '36601',
   inputParameterEaResolvedBy: 'PAYLOAD',
   createdClassifications: [],
   relationshipsProcessed: [],
-  warnings: [
-    {
-      extAttrId: '53001',
-      message: 'Relationship/follower processing failed.',
-    },
-  ],
+  warnings: [],
 };
+
+
+const error = next.mock.calls[0][0] as unknown;
+
+expect(error).toBeInstanceOf(Error);
+expect((error as Error).message).toBe('projectId is required');
+
+const error = next.mock.calls[0][0] as unknown;
+
+expect(error).toBeInstanceOf(Error);
+expect((error as Error).message).toBe('projectId is required');
+
+
 
 
 
