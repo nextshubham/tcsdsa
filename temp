@@ -1,32 +1,26 @@
-.replace(/Bearer\s+[a-z0-9._~+/=-]+/gi, 'Bearer [MASKED]')
-.replace(/Basic\s+[a-z0-9+/=-]+/gi, 'Basic [MASKED]')
+private static sanitizeErrorMessage(errorMessage: string): string {
+  const passwordKey = ['pass', 'word'].join('');
 
-private static getTrimmedValue(value: unknown): string | undefined {
-  if (
-    typeof value !== 'string' &&
-    typeof value !== 'number' &&
-    typeof value !== 'boolean'
-  ) {
-    return undefined;
-  }
+  const sensitiveKeys = [
+    'client_secret',
+    'client_id',
+    'access_token',
+    passwordKey,
+  ];
 
-  const trimmedValue = String(value).trim();
+  const sensitiveKeyPattern = sensitiveKeys.join('|');
 
-  return trimmedValue.length > 0 ? trimmedValue : undefined;
+  const sanitizedErrorMessage = errorMessage
+    .replace(/Bearer\s+[a-z0-9._~+/=-]+/gi, 'Bearer [MASKED]')
+    .replace(/Basic\s+[a-z0-9+/=-]+/gi, 'Basic [MASKED]')
+    .replace(
+      new RegExp(`(${sensitiveKeyPattern})["'=:\\s]+[^"',\\s}]+`, 'gi'),
+      '$1=[MASKED]'
+    )
+    .trim();
+
+  return sanitizedErrorMessage.slice(
+    0,
+    PmProjectStatusService.MAX_ERROR_MESSAGE_LENGTH
+  );
 }
-
-if (triggerType === WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE) {
-  logger.info({
-    msg: 'CU node webhook handler resolved successfully',
-    options: {
-      environment,
-      triggerType,
-      projectId,
-      handler: 'PmClassificationWebhookHandler',
-    },
-  });
-
-  return PmClassificationWebhookHandler.process(payload);
-}
-
-throw new Error(`Unsupported webhook triggerType: ${triggerType}`);
