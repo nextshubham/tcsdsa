@@ -1,26 +1,36 @@
-type ProjectId = string | number;
-type TaskId = string | number;
+## Summary
 
-type OptionalProjectId = ProjectId | undefined;
-type OptionalTaskId = TaskId | undefined;
+This PR adds PM classification webhook processing to support creation of DAM classifications from PM project data.
 
-private static extractProjectId(
-  payload: CuNodeWebhookPayload
-): OptionalProjectId {
-  return payload.body?.projectId ?? payload.Body?.project_id ?? payload.Body?.projectId;
-}
+## Changes Included
 
-private static extractTaskId(payload: CuNodeWebhookPayload): OptionalTaskId {
-  return payload.body?.taskId ?? payload.ObjectId;
-}
+- Added PM classification webhook trigger handling.
+- Added classification creation flow using PM project extended attributes.
+- Added input parameter parsing and validation logic.
+- Added DAM classification service integration for:
+  - finding parent classification
+  - creating DAM classification
+  - updating relationship field
+  - adding follower classification
+- Added PM project status update handling:
+  - mark project as Pass on successful processing
+  - mark project as Fail on partial success or processing failure
+  - update error message extended attribute when applicable
+- Added PM task close handling after successful webhook processing.
+- Added structured logging for webhook processing, service calls, success, warning, and error paths.
+- Added error handling so original processing errors are preserved even if status update fails.
+- Added/updated unit tests for controller, handler, dispatcher, PM services, DAM classification service, input parser, and error logger.
 
-private static async markProjectFailSafely(
-  projectId: OptionalProjectId,
-  environment: string,
-  error: unknown
-): Promise<void> {
+## Validation
 
-private static async closeTaskSafely(
-  taskId: TaskId,
-  environment: string
-): Promise<void> {
+- Build completed successfully.
+- Lint completed successfully.
+- Unit tests completed successfully.
+- Test coverage added for success, validation, warning, and error scenarios.
+
+## Testing Commands
+
+```bash
+npm run build
+npm run lint
+npm test -- --coverage --runInBand
