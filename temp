@@ -1,22 +1,166 @@
-).rejects.toThrow('Failed to get DAM parent classification');
+public static async processWebhook(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const payload = req.body as CuNodeWebhookPayload;
+
+  try {
+    const validatedPayload = CuNodeWebhookController.validatePayload(payload);
+
+    CuNodeWebhookController.logRequestReceived(payload, validatedPayload);
+
+    const response = await PmClassificationWebhookService.process(
+      validatedPayload
+    );
+
+    await CuNodeWebhookController.handleProcessingResult(
+      validatedPayload,
+      response
+    );
+
+    CuNodeWebhookController.logRequestCompleted(validatedPayload, response);
+
+    res.status(200).json(response);
+  } catch (error) {
+    await CuNodeWebhookController.handleProcessingFailure(payload, error);
+    next(error);
+  }
+}
 
 
-).rejects.toThrow('Failed to get DAM parent classification');
 
-).rejects.toThrow('Failed to get DAM field definition');
+private static logRequestReceived(
+  payload: CuNodeWebhookPayload,
+  validatedPayload: CuNodeWebhookPayload
+): void {
+  logger.info({
+    msg: 'PM classification webhook request received',
+    options: {
+      environment: validatedPayload.environment,
+      triggerType: validatedPayload.triggerType,
+      projectId: validatedPayload.body.projectId,
+      taskId: validatedPayload.body.taskId,
+      inputParameterEaId: validatedPayload.body.inputParameterEaId,
+      sourcePayloadType: payload.Body ? 'PM_WEBHOOK' : 'LOCAL_TEST',
+    },
+  });
+}
 
-).rejects.toThrow('Failed to get DAM field definition');
+private static async handleProcessingResult(
+  validatedPayload: CuNodeWebhookPayload,
+  response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
+): Promise<void> {
+  if (response.status === 'SUCCESS') {
+    await CuNodeWebhookController.handleSuccessfulProcessing(validatedPayload);
+    return;
+  }
 
-).rejects.toThrow('relationshipField is required');
+  await PmProjectStatusService.markFail(
+    validatedPayload.body.projectId,
+    CuNodeWebhookController.getWarningMessage(response.warnings),
+    validatedPayload.environment
+  );
+}
 
-).rejects.toThrow('Failed to add DAM follower classification');
+private static async handleSuccessfulProcessing(
+  validatedPayload: CuNodeWebhookPayload
+): Promise<void> {
+  await PmProjectStatusService.markPass(
+    validatedPayload.body.projectId,
+    validatedPayload.environment
+  );
 
-mockedConfig.APRIMO_CLASSIFICATION_LANGUAGE_ID = undefined;
+  if (!validatedPayload.body.taskId) {
+    return;
+  }
 
-await expect(
-  DamClassificationService.createClassification(
-    'Toolkit One',
-    'parent-classification-id',
-    'dev'
-  )
-).rejects.toThrow('APRIMO_CLASSIFICATION_LANGUAGE_ID is not configured');
+  await CuNodeWebhookController.closeTaskSafely(
+    validatedPayload.body.taskId,
+    validatedPayload.environment
+  );
+}
+
+private static logRequestCompleted(
+  validatedPayload: CuNodeWebhookPayload,
+  response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
+): void {
+  logger.info({
+    msg: 'PM classification webhook request completed',
+    options: {
+      environment: validatedPayload.environment,
+      triggerType: validatedPayload.triggerType,
+      projectId: validatedPayload.body.projectId,
+      taskId: validatedPayload.body.taskId,
+      status: response.status,
+    },
+  });
+}
+
+private static async handleProcessingFailure(
+  payload: CuNodeWebhookPayload,
+  error: unknown
+): Promise<void> {
+  const projectId = CuNodeWebhookController.extractProjectId(payload);
+  const environment =
+    payload.environment ?? CuNodeWebhookController.getDefaultEnvironment();
+
+  await CuNodeWebhookController.markProjectFailSafely(
+    projectId,
+    environment,
+    error
+  );
+
+  logger.error({
+    msg: 'PM classification webhook request processing failed',
+    options: {
+      projectId,
+      taskId: payload.ObjectId ?? payload.body?.taskId,
+      error: CuNodeWebhookController.getErrorMessage(
+        error,
+        'Unknown error'
+      ),
+    },
+  });
+}
+
+private static async markProjectFailSafely(
+  projectId: string | number | undefined,
+  environment: string,
+  error: unknown
+): Promise<void> {
+  if (!projectId) {
+    return;
+  }
+
+  try {
+    await PmProjectStatusService.markFail(
+      projectId,
+      CuNodeWebhookController.getErrorMessage(
+        error,
+        'Unknown processing error'
+      ),
+      environment
+    );
+  } catch (statusUpdateError) {
+    logger.error({
+      msg: 'Failed to update PM project failure status',
+      options: {
+        projectId,
+        error: CuNodeWebhookController.getErrorMessage(
+          statusUpdateError,
+          'Unknown error'
+        ),
+      },
+    });
+  }
+}
+
+private static getErrorMessage(
+  error: unknown,
+  fallbackMessage: string
+): string {
+  return error instanceof Error ? error.message : fallbackMessage;
+}
+
+
