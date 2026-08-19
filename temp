@@ -1,102 +1,32 @@
-private static getRequiredEnvironment(
-  validatedPayload: CuNodeWebhookPayload
-): string {
-  const environment = validatedPayload.environment?.trim();
+.replace(/Bearer\s+[a-z0-9._~+/=-]+/gi, 'Bearer [MASKED]')
+.replace(/Basic\s+[a-z0-9+/=-]+/gi, 'Basic [MASKED]')
 
-  if (!environment) {
-    throw new Error('environment is required');
+private static getTrimmedValue(value: unknown): string | undefined {
+  if (
+    typeof value !== 'string' &&
+    typeof value !== 'number' &&
+    typeof value !== 'boolean'
+  ) {
+    return undefined;
   }
 
-  return environment;
+  const trimmedValue = String(value).trim();
+
+  return trimmedValue.length > 0 ? trimmedValue : undefined;
 }
 
-private static async handleProcessingResult(
-  validatedPayload: CuNodeWebhookPayload,
-  response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
-): Promise<void> {
-  const projectId =
-    CuNodeWebhookController.getRequiredProjectId(validatedPayload);
-  const environment =
-    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
-
-  if (response.status === 'SUCCESS') {
-    await CuNodeWebhookController.handleSuccessfulProcessing(
-      validatedPayload,
+if (triggerType === WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE) {
+  logger.info({
+    msg: 'CU node webhook handler resolved successfully',
+    options: {
+      environment,
+      triggerType,
       projectId,
-      environment
-    );
-    return;
-  }
-
-  await PmProjectStatusService.markFail(
-    projectId,
-    CuNodeWebhookController.getWarningMessage(response.warnings),
-    environment
-  );
-}
-
-private static async handleSuccessfulProcessing(
-  validatedPayload: CuNodeWebhookPayload,
-  projectId: string | number,
-  environment: string
-): Promise<void> {
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
-
-  await PmProjectStatusService.markPass(projectId, environment);
-
-  if (!body.taskId) {
-    return;
-  }
-
-  await CuNodeWebhookController.closeTaskSafely(body.taskId, environment);
-}
-
-private static logRequestReceived(
-  payload: CuNodeWebhookPayload,
-  validatedPayload: CuNodeWebhookPayload
-): void {
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
-  const environment =
-    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
-
-  logger.info({
-    msg: 'PM classification webhook request received',
-    options: {
-      environment,
-      triggerType: validatedPayload.triggerType,
-      projectId: body.projectId,
-      taskId: body.taskId,
-      inputParameterEaId: body.inputParameterEaId,
-      sourcePayloadType: payload.Body ? 'PM_WEBHOOK' : 'LOCAL_TEST',
+      handler: 'PmClassificationWebhookHandler',
     },
   });
+
+  return PmClassificationWebhookHandler.process(payload);
 }
 
-private static logRequestCompleted(
-  validatedPayload: CuNodeWebhookPayload,
-  response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
-): void {
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
-  const environment =
-    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
-
-  logger.info({
-    msg: 'PM classification webhook request completed',
-    options: {
-      environment,
-      triggerType: validatedPayload.triggerType,
-      projectId: body.projectId,
-      taskId: body.taskId,
-      status: response.status,
-    },
-  });
-}
-
-const environment =
-  payload.environment?.trim() ?? CuNodeWebhookController.getDefaultEnvironment();
-
-const environment =
-  payload.environment?.trim() ?? CuNodeWebhookController.getDefaultEnvironment();
-
-
-
+throw new Error(`Unsupported webhook triggerType: ${triggerType}`);
