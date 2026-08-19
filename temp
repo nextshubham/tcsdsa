@@ -49,3 +49,17 @@ const partialSuccessResponse = {
 };
 
 
+const partialSuccessResponse = {
+  message: 'PM classification webhook processed with warnings',
+  environment: 'dev',
+  triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+  projectId: 270404,
+  status: 'PARTIAL_SUCCESS' as const,
+  inputParameterEaId: '36601',
+  inputParameterResolvedBy: 'PAYLOAD' as const,
+  inputParametersProcessed: 2,
+  createdClassifications: [],
+  relationshipsProcessed: [],
+  warnings: [],
+};
+
