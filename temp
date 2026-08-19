@@ -1,26 +1,54 @@
-private static getRequiredBody(
+private static getRequiredEnvironment(
   validatedPayload: CuNodeWebhookPayload
-): NonNullable<CuNodeWebhookPayload['body']> {
-  const { body } = validatedPayload;
+): string {
+  const environment = validatedPayload.environment?.trim();
 
-  if (!body) {
-    throw new Error('body is required');
+  if (!environment) {
+    throw new Error('environment is required');
   }
 
-  return body;
+  return environment;
 }
 
-private static getRequiredProjectId(
-  validatedPayload: CuNodeWebhookPayload
-): string | number {
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
-  const { projectId } = body;
+private static async handleProcessingResult(
+  validatedPayload: CuNodeWebhookPayload,
+  response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
+): Promise<void> {
+  const projectId =
+    CuNodeWebhookController.getRequiredProjectId(validatedPayload);
+  const environment =
+    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
 
-  if (!projectId) {
-    throw new Error('projectId is required');
+  if (response.status === 'SUCCESS') {
+    await CuNodeWebhookController.handleSuccessfulProcessing(
+      validatedPayload,
+      projectId,
+      environment
+    );
+    return;
   }
 
-  return projectId;
+  await PmProjectStatusService.markFail(
+    projectId,
+    CuNodeWebhookController.getWarningMessage(response.warnings),
+    environment
+  );
+}
+
+private static async handleSuccessfulProcessing(
+  validatedPayload: CuNodeWebhookPayload,
+  projectId: string | number,
+  environment: string
+): Promise<void> {
+  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
+
+  await PmProjectStatusService.markPass(projectId, environment);
+
+  if (!body.taskId) {
+    return;
+  }
+
+  await CuNodeWebhookController.closeTaskSafely(body.taskId, environment);
 }
 
 private static logRequestReceived(
@@ -28,11 +56,13 @@ private static logRequestReceived(
   validatedPayload: CuNodeWebhookPayload
 ): void {
   const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
+  const environment =
+    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
 
   logger.info({
     msg: 'PM classification webhook request received',
     options: {
-      environment: validatedPayload.environment,
+      environment,
       triggerType: validatedPayload.triggerType,
       projectId: body.projectId,
       taskId: body.taskId,
@@ -41,37 +71,19 @@ private static logRequestReceived(
     },
   });
 }
-private static async handleSuccessfulProcessing(
-  validatedPayload: CuNodeWebhookPayload,
-  projectId: string | number
-): Promise<void> {
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
-
-  await PmProjectStatusService.markPass(
-    projectId,
-    validatedPayload.environment
-  );
-
-  if (!body.taskId) {
-    return;
-  }
-
-  await CuNodeWebhookController.closeTaskSafely(
-    body.taskId,
-    validatedPayload.environment
-  );
-}
 
 private static logRequestCompleted(
   validatedPayload: CuNodeWebhookPayload,
   response: Awaited<ReturnType<typeof PmClassificationWebhookService.process>>
 ): void {
   const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
+  const environment =
+    CuNodeWebhookController.getRequiredEnvironment(validatedPayload);
 
   logger.info({
     msg: 'PM classification webhook request completed',
     options: {
-      environment: validatedPayload.environment,
+      environment,
       triggerType: validatedPayload.triggerType,
       projectId: body.projectId,
       taskId: body.taskId,
@@ -79,6 +91,12 @@ private static logRequestCompleted(
     },
   });
 }
+
+const environment =
+  payload.environment?.trim() ?? CuNodeWebhookController.getDefaultEnvironment();
+
+const environment =
+  payload.environment?.trim() ?? CuNodeWebhookController.getDefaultEnvironment();
 
 
 
