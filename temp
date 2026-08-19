@@ -1,8 +1,13 @@
-expect(mockedLogger.error).toHaveBeenCalledWith({
-  msg: 'PM project details API failed',
-  options: expect.objectContaining({
-    environment: 'dev',
-    projectId: '270404',
-    error: 'Request failed',
-  }),
-});
+const successResponse = {
+  message: 'PM classification webhook processed successfully',
+  environment: 'dev',
+  triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+  projectId: 270404,
+  status: 'SUCCESS' as const,
+  inputParameterEaId: '36601',
+  inputParameterResolvedBy: 'PAYLOAD' as const,
+  inputParametersProcessed: 2,
+  createdClassifications: [],
+  relationshipsProcessed: [],
+  warnings: [],
+};
