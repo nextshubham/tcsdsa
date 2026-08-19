@@ -1,40 +1,23 @@
-const successResponse: PmClassificationWebhookServiceResponse = {
-  message: 'PM classification webhook processed successfully',
-  environment: 'dev',
-  triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
-  projectId: 270404,
-  status: 'SUCCESS',
-  inputParameterEaId: '36601',
-  inputParameterEaResolvedBy: 'PAYLOAD',
-  createdClassifications: [],
-  relationshipsProcessed: [],
-  warnings: [],
-};
+it('should log handler start and completion details', async () => {
+  await PmClassificationWebhookHandler.process(payload);
 
+  expect(mockedLogger.info).toHaveBeenCalledWith({
+    msg: 'PM classification webhook handler started',
+    options: expect.objectContaining({
+      environment: 'dev',
+      triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+      projectId: 270404,
+      inputParameterEaId: '36601',
+    }),
+  });
 
-const error = next.mock.calls[0][0] as unknown;
-
-expect(error).toBeInstanceOf(Error);
-expect((error as Error).message).toBe('projectId is required');
-
-const error = next.mock.calls[0][0] as unknown;
-
-expect(error).toBeInstanceOf(Error);
-expect((error as Error).message).toBe('projectId is required');
-
-
-
-
-
-const partialSuccessResponse: PmClassificationWebhookServiceResponse = {
-  message: 'PM classification webhook processed with warnings',
-  environment: 'dev',
-  triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
-  projectId: 270404,
-  status: 'PARTIAL_SUCCESS',
-  inputParameterEaId: '36601',
-  inputParameterEaResolvedBy: 'PAYLOAD',
-  createdClassifications: [],
-  relationshipsProcessed: [],
-  warnings: [],
-};
+  expect(mockedLogger.info).toHaveBeenCalledWith({
+    msg: 'PM classification webhook handler completed',
+    options: expect.objectContaining({
+      environment: 'dev',
+      triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+      projectId: 270404,
+      status: 'SUCCESS',
+    }),
+  });
+});
