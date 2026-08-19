@@ -1,3 +1,22 @@
-expect(decodeURIComponent(requestedPath).replace(/\+/g, ' ')).toContain(
-  '/DAM/Toolkit/Toolkit ID'
-);
+).rejects.toThrow('Failed to get DAM parent classification');
+
+
+).rejects.toThrow('Failed to get DAM parent classification');
+
+).rejects.toThrow('Failed to get DAM field definition');
+
+).rejects.toThrow('Failed to get DAM field definition');
+
+).rejects.toThrow('relationshipField is required');
+
+).rejects.toThrow('Failed to add DAM follower classification');
+
+mockedConfig.APRIMO_CLASSIFICATION_LANGUAGE_ID = undefined;
+
+await expect(
+  DamClassificationService.createClassification(
+    'Toolkit One',
+    'parent-classification-id',
+    'dev'
+  )
+).rejects.toThrow('APRIMO_CLASSIFICATION_LANGUAGE_ID is not configured');
