@@ -1,32 +1,23 @@
-it('should throw error when no classifications can be created', async () => {
-  mockedPmProjectService.getProjectDetails.mockResolvedValue({
-    projectId: 270404,
-    extendedAttributes: [
-      {
-        eaId: 51202,
-        eaValue: null,
-      },
-    ],
-  });
+it.each([
+  ['CU_STATUS_EA_ID'],
+  ['CU_STATUS_FAIL_VALUE'],
+  ['CU_ERROR_MESSAGE_EA_ID'],
+])('should throw error when %s is missing for markFail', async (configKey) => {
+  mockedConfig[configKey as keyof typeof mockedConfig] = undefined;
 
-  mockedInputParameterParser.resolveInputParameters.mockReturnValue({
-    inputParameterEaId: '36601',
-    resolvedBy: 'PAYLOAD',
-    inputParameters: [
-      {
-        extAttrId: '51202',
-        parentNamePath: '/DAM/Toolkit/Toolkit ID',
-        establishRelationship: 'No',
-        addToFollowers: 'No',
-      },
-    ],
-  });
+  await expect(
+    PmProjectStatusService.markFail(270404, 'Error', 'dev')
+  ).rejects.toThrow(`${configKey} is not configured`);
 
-  await expect(PmClassificationWebhookService.process(payload)).rejects.toThrow(
-    'No classifications were created'
+  expect(mockedHttpClient.put).not.toHaveBeenCalled();
+});
+
+it('should throw error when CU_STATUS_PASS_VALUE is missing for markPass', async () => {
+  mockedConfig.CU_STATUS_PASS_VALUE = undefined;
+
+  await expect(PmProjectStatusService.markPass(270404, 'dev')).rejects.toThrow(
+    'CU_STATUS_PASS_VALUE is not configured'
   );
 
-  expect(
-    mockedDamClassificationService.createClassification
-  ).not.toHaveBeenCalled();
+  expect(mockedHttpClient.put).not.toHaveBeenCalled();
 });
