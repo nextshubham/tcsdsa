@@ -1,0 +1,32 @@
+it('should throw error when no classifications can be created', async () => {
+  mockedPmProjectService.getProjectDetails.mockResolvedValue({
+    projectId: 270404,
+    extendedAttributes: [
+      {
+        eaId: 51202,
+        eaValue: null,
+      },
+    ],
+  });
+
+  mockedInputParameterParser.resolveInputParameters.mockReturnValue({
+    inputParameterEaId: '36601',
+    resolvedBy: 'PAYLOAD',
+    inputParameters: [
+      {
+        extAttrId: '51202',
+        parentNamePath: '/DAM/Toolkit/Toolkit ID',
+        establishRelationship: 'No',
+        addToFollowers: 'No',
+      },
+    ],
+  });
+
+  await expect(PmClassificationWebhookService.process(payload)).rejects.toThrow(
+    'No classifications were created'
+  );
+
+  expect(
+    mockedDamClassificationService.createClassification
+  ).not.toHaveBeenCalled();
+});
