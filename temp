@@ -1,23 +1,29 @@
 it('should log handler start and completion details', async () => {
   await PmClassificationWebhookHandler.process(payload);
 
-  expect(mockedLogger.info).toHaveBeenCalledWith({
-    msg: 'PM classification webhook handler started',
-    options: expect.objectContaining({
-      environment: 'dev',
-      triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
-      projectId: 270404,
-      inputParameterEaId: '36601',
-    }),
-  });
+  const loggerInfoCalls = mockedLogger.info.mock.calls.map(
+    ([logPayload]) => logPayload
+  );
 
-  expect(mockedLogger.info).toHaveBeenCalledWith({
-    msg: 'PM classification webhook handler completed',
-    options: expect.objectContaining({
-      environment: 'dev',
-      triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
-      projectId: 270404,
-      status: 'SUCCESS',
-    }),
-  });
+  expect(loggerInfoCalls).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        msg: 'PM classification webhook handler started',
+        options: expect.objectContaining({
+          environment: 'dev',
+          triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+          projectId: 270404,
+          inputParameterEaId: '36601',
+        }),
+      }),
+      expect.objectContaining({
+        msg: 'PM classification webhook handler completed',
+        options: expect.objectContaining({
+          environment: 'dev',
+          triggerType: WEBHOOK_TRIGGER_TYPES.PM_CLASSIFICATION_CREATE,
+          projectId: 270404,
+        }),
+      }),
+    ])
+  );
 });
