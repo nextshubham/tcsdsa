@@ -1,36 +1,101 @@
-## Summary
+private static normalizeObjectType(objectType?: string): PmObjectType {
+  const normalizedObjectType = objectType?.trim();
 
-This PR adds PM classification webhook processing to support creation of DAM classifications from PM project data.
+  if (!normalizedObjectType) {
+    return 'Project';
+  }
 
-## Changes Included
+  if (normalizedObjectType !== 'Project' && normalizedObjectType !== 'Activity') {
+    throw new Error(`Unsupported ObjectType: ${normalizedObjectType}`);
+  }
 
-- Added PM classification webhook trigger handling.
-- Added classification creation flow using PM project extended attributes.
-- Added input parameter parsing and validation logic.
-- Added DAM classification service integration for:
-  - finding parent classification
-  - creating DAM classification
-  - updating relationship field
-  - adding follower classification
-- Added PM project status update handling:
-  - mark project as Pass on successful processing
-  - mark project as Fail on partial success or processing failure
-  - update error message extended attribute when applicable
-- Added PM task close handling after successful webhook processing.
-- Added structured logging for webhook processing, service calls, success, warning, and error paths.
-- Added error handling so original processing errors are preserved even if status update fails.
-- Added/updated unit tests for controller, handler, dispatcher, PM services, DAM classification service, input parser, and error logger.
+  return normalizedObjectType;
+}
 
-## Validation
+ objectType: InputParameterParser.normalizeObjectType(
+    rawInputParameter.ObjectType
+  ),
 
-- Build completed successfully.
-- Lint completed successfully.
-- Unit tests completed successfully.
-- Test coverage added for success, validation, warning, and error scenarios.
+ activityId?: string | number;
 
-## Testing Commands
+private static extractActivityId(
+  payload: CuNodeWebhookPayload
+): OptionalTaskId {
+  return payload.body?.activityId ?? payload.Body?.activity_id ?? payload.Body?.activityId;
+}
 
-```bash
-npm run build
-npm run lint
-npm test -- --coverage --runInBand
+body: {
+  projectId: CuNodeWebhookController.extractProjectId(payload),
+  taskId: CuNodeWebhookController.extractTaskId(payload),
+  activityId: CuNodeWebhookController.extractActivityId(payload),
+  inputParameterEaId: payload.body?.inputParameterEaId ?? payload.Body?.inputParameterEaId,
+}
+
+src/services/pmActivityService.ts
+
+import config from '../config/env';
+import httpClient from '../utils/httpClient';
+import logger from '../utils/logger';
+
+interface AppConfig {
+  PM_BASE_URL?: string;
+  BASE_URL?: string;
+  APRIMO_BASE_URL?: string;
+}
+
+export interface PmActivityExtendedAttribute {
+  eaId: string | number;
+  eaValue?: string | number | boolean | null;
+}
+
+export interface PmActivityDetails {
+  activityId: string | number;
+  extendedAttributes?: PmActivityExtendedAttribute[];
+}
+
+export class PmActivityService {
+  public static async getActivityDetails(
+    activityId: string | number,
+    environment: string
+  ): Promise<PmActivityDetails> {
+    const url = PmActivityService.buildActivityDetailsUrl(String(activityId));
+
+    logger.info({
+      msg: 'Fetching PM activity details',
+      options: {
+        activityId,
+        environment,
+      },
+    });
+
+    const response = await httpClient.get<PmActivityDetails>(url);
+
+    return response.data;
+  }
+
+  private static buildActivityDetailsUrl(activityId: string): string {
+    const pmBaseUrl = PmActivityService.getPmBaseUrl();
+
+    return new URL(`/api/activities/${activityId}`, pmBaseUrl).toString();
+  }
+
+  private static getPmBaseUrl(): string {
+    const appConfig = config as AppConfig;
+    const pmBaseUrl =
+      appConfig.PM_BASE_URL ?? appConfig.BASE_URL ?? appConfig.APRIMO_BASE_URL;
+
+    if (!pmBaseUrl?.trim()) {
+      throw new Error('PM_BASE_URL or BASE_URL is not configured');
+    }
+
+    return pmBaseUrl.trim();
+  }
+}
+
+import { PmActivityService } from './pmActivityService';
+
+interface ExtendedAttributeSourceContext {
+  projectExtendedAttributes: ProjectExtendedAttribute[];
+  activityExtendedAttributes?: ProjectExtendedAttribute[];
+}
+
