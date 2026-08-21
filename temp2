@@ -1,34 +1,13 @@
-private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
-  const projectIdMatch = body.match(/\bproject_id\s*:\s*['"]?(\d+)['"]?/i);
-
-  return projectIdMatch?.[1];
-}
-
-private static extractProjectIdFromBody(body: unknown): OptionalProjectId {
-  if (!body) {
-    return undefined;
-  }
-
-  if (typeof body === 'string') {
-    return CuNodeWebhookController.extractProjectIdFromBodyString(body);
-  }
-
-  if (typeof body === 'object') {
-    const bodyRecord = body as Record<string, unknown>;
-    const projectId = bodyRecord.projectId ?? bodyRecord.project_id;
-
-    if (typeof projectId === 'string' || typeof projectId === 'number') {
-      return projectId;
-    }
-  }
-
-  return undefined;
-}
-
-private static extractProjectId(payload: CuNodeWebhookPayload): OptionalProjectId {
-  return (
-    CuNodeWebhookController.extractProjectIdFromBody(payload.body) ??
-    CuNodeWebhookController.extractProjectIdFromBody(payload.Body)
-  );
-}
-
+logger.info({
+  msg: 'CU node webhook payload received',
+  options: {
+    calloutType: req.body?.CalloutType,
+    objectResourceName: req.body?.ObjectResourceName,
+    objectId: req.body?.ObjectId,
+    eventId: req.body?.EventId,
+    eventTime: req.body?.EventTime,
+    hasBody: Boolean(req.body?.Body ?? req.body?.body),
+    bodyType: typeof (req.body?.Body ?? req.body?.body),
+    body: req.body?.Body ?? req.body?.body,
+  },
+});
