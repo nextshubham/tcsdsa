@@ -1,10 +1,9 @@
-const hasActivityInputParameter = inputParameters.some(
-  (inputParameter) => inputParameter.objectType === 'Activity'
-);
+private static getRequiredActivityId(
+  projectDetails: PmProjectDetails
+): string | number {
+  if (!projectDetails.activityId) {
+    throw new Error('activityId is required when ObjectType is Activity');
+  }
 
-const activityDetails = hasActivityInputParameter
-  ? await PmActivityService.getActivityDetails(
-      PmClassificationWebhookService.getRequiredActivityId(projectDetails),
-      environment
-    )
-  : undefined;
+  return projectDetails.activityId;
+}
