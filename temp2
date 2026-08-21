@@ -1,41 +1,34 @@
-feat: support Project and Activity object types for PM classification workflow
+private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
+  const projectIdMatch = body.match(/\bproject_id\s*:\s*['"]?(\d+)['"]?/i);
 
-## Summary
-
-Added support for `ObjectType` in PM classification input parameters.
-
-The workflow now supports classification creation from both Project and Activity extended attributes:
-
-- `ObjectType: Project` reads the EA value from `/api/projects/{projectId}`
-- `ObjectType: Activity` reads the EA value from `/api/activities/{activityId}`
-- Missing `ObjectType` defaults to `Project` to maintain backward compatibility
-
-## Changes
-
-- Added `ObjectType` parsing in `InputParameterParser`
-- Added `objectType` to normalized input parameter model
-- Added Activity details service to fetch activity extended attributes
-- Updated PM classification processing to:
-  - detect Activity input parameters
-  - fetch activity details only when required
-  - use project/activity extended attributes based on `objectType`
-- Added logging to show:
-  - where InputParameters were resolved from
-  - resolved input parameter count and mapping
-  - whether Activity data was required/fetched
-- Updated affected test cases for new `objectType` field
-- Merged latest `development` into the feature branch and resolved compatibility checks
-
-## Behavior
-
-Existing Project-based flow remains backward compatible.
-
-Example:
-
-```json
-{
-  "ExtAttrID": "44903",
-  "ObjectType": "Activity",
-  "ParentNamePath": "/DAM/Toolkit/Toolkit ID",
-  "EstablishRelationship": "No"
+  return projectIdMatch?.[1];
 }
+
+private static extractProjectIdFromBody(body: unknown): OptionalProjectId {
+  if (!body) {
+    return undefined;
+  }
+
+  if (typeof body === 'string') {
+    return CuNodeWebhookController.extractProjectIdFromBodyString(body);
+  }
+
+  if (typeof body === 'object') {
+    const bodyRecord = body as Record<string, unknown>;
+    const projectId = bodyRecord.projectId ?? bodyRecord.project_id;
+
+    if (typeof projectId === 'string' || typeof projectId === 'number') {
+      return projectId;
+    }
+  }
+
+  return undefined;
+}
+
+private static extractProjectId(payload: CuNodeWebhookPayload): OptionalProjectId {
+  return (
+    CuNodeWebhookController.extractProjectIdFromBody(payload.body) ??
+    CuNodeWebhookController.extractProjectIdFromBody(payload.Body)
+  );
+}
+
