@@ -1,1 +1,10 @@
+const hasActivityInputParameter = inputParameters.some(
+  (inputParameter) => inputParameter.objectType === 'Activity'
+);
 
+const activityDetails = hasActivityInputParameter
+  ? await PmActivityService.getActivityDetails(
+      PmClassificationWebhookService.getRequiredActivityId(projectDetails),
+      environment
+    )
+  : undefined;
