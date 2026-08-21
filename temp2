@@ -1,13 +1,18 @@
-logger.info({
-  msg: 'CU node webhook payload received',
-  options: {
-    calloutType: req.body?.CalloutType,
-    objectResourceName: req.body?.ObjectResourceName,
-    objectId: req.body?.ObjectId,
-    eventId: req.body?.EventId,
-    eventTime: req.body?.EventTime,
-    hasBody: Boolean(req.body?.Body ?? req.body?.body),
-    bodyType: typeof (req.body?.Body ?? req.body?.body),
-    body: req.body?.Body ?? req.body?.body,
-  },
-});
+private static readonly PROJECT_ID_BODY_PATTERN =
+  /\bproject_id\s*:\s*['"]?(\d+)['"]?/i;
+
+private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
+  const projectIdMatch =
+    CuNodeWebhookController.PROJECT_ID_BODY_PATTERN.exec(body);
+
+  return projectIdMatch?.[1];
+}
+
+..
+
+private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
+  const projectIdPattern = /\bproject_id\s*:\s*['"]?(\d+)['"]?/i;
+  const projectIdMatch = projectIdPattern.exec(body);
+
+  return projectIdMatch?.[1];
+}
