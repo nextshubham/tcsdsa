@@ -1,4 +1,19 @@
-const sourceExtendedAttributes =
-  inputParameter.objectType === 'Activity'
-    ? activityDetails?.extendedAttributes
-    : extendedAttributes;
+logger.info({
+  msg: 'InputParameters resolved for PM classification processing',
+  options: {
+    environment,
+    projectId,
+    inputParameterEaId: inputParameterResolution.inputParameterEaId,
+    resolvedBy: inputParameterResolution.resolvedBy,
+    inputParameterCount: inputParameters.length,
+    inputParameters: inputParameters.map((inputParameter) => ({
+      extAttrId: inputParameter.extAttrId,
+      objectType: inputParameter.objectType,
+      parentNamePath: inputParameter.parentNamePath,
+      establishRelationship: inputParameter.establishRelationship,
+      relationshipField: inputParameter.relationshipField,
+      addToFollowers: inputParameter.addToFollowers,
+      leaderExtAttr: inputParameter.leaderExtAttr,
+    })),
+  },
+});
