@@ -1,9 +1,4 @@
-private static getRequiredActivityId(
-  projectDetails: PmProjectDetails
-): string | number {
-  if (!projectDetails.activityId) {
-    throw new Error('activityId is required when ObjectType is Activity');
-  }
-
-  return projectDetails.activityId;
-}
+const sourceExtendedAttributes =
+  inputParameter.objectType === 'Activity'
+    ? activityDetails?.extendedAttributes
+    : extendedAttributes;
