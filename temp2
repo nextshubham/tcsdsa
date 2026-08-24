@@ -8,6 +8,14 @@ private static async delay(milliseconds: number): Promise<void> {
   });
 }
 
+private static normalizeError(error: unknown): Error {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error(String(error));
+}
+
 private static isRetryableDamError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) {
     return false;
@@ -33,7 +41,7 @@ private static async executeWithRetry<T>(
   operation: () => Promise<T>,
   logOptions: Record<string, unknown>
 ): Promise<T> {
-  let lastError: unknown;
+  let lastError: Error | undefined;
 
   for (
     let attempt = 1;
@@ -43,7 +51,8 @@ private static async executeWithRetry<T>(
     try {
       return await operation();
     } catch (error) {
-      lastError = error;
+      const normalizedError = DamClassificationService.normalizeError(error);
+      lastError = normalizedError;
 
       const shouldRetry =
         attempt < DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS &&
@@ -56,13 +65,12 @@ private static async executeWithRetry<T>(
           operationName,
           attempt,
           shouldRetry,
-          status: axios.isAxiosError(error) ? error.response?.status : undefined,
-          errorCode: axios.isAxiosError(error) ? error.code : undefined,
+          ...DamClassificationService.getErrorLogOptions(error),
         },
       });
 
       if (!shouldRetry) {
-        throw error;
+        throw normalizedError;
       }
 
       await DamClassificationService.delay(
@@ -71,5 +79,7 @@ private static async executeWithRetry<T>(
     }
   }
 
-  throw lastError;
+  throw lastError ?? new Error(`${operationName} failed`);
 }
+
+
