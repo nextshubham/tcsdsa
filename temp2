@@ -1,59 +1,14 @@
-  await PmProjectStatusService.markFail(
-    projectId,
-    CuNodeWebhookController.getWarningMessage(response.warnings) ||
-      response.message,
-    environment
-  );
+Updated CU node webhook processing so the PM task close API is called after webhook processing is completed, including non-success outcomes.
 
-  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
+As per the updated requirement, the workflow should update CU status/error fields and then close the PM task for all processing outcomes where `taskId` is available.
 
-  if (body.taskId) {
-    await CuNodeWebhookController.closeTaskSafely(body.taskId, environment);
-  }
+## Changes
 
-private static async handleProcessingFailure(
-  payload: CuNodeWebhookPayload,
-  error: unknown
-): Promise<void> {
-  const projectId = CuNodeWebhookController.extractProjectId(payload);
-  const taskId = CuNodeWebhookController.extractTaskId(payload);
-  const environment =
-    payload.environment ?? CuNodeWebhookController.getDefaultEnvironment();
-
-  await CuNodeWebhookController.markProjectFailSafely(
-    projectId,
-    environment,
-    error
-  );
-
-  if (taskId) {
-    await CuNodeWebhookController.closeTaskSafely(taskId, environment);
-  }
-
-  logger.error({
-    msg: 'PM classification webhook request processing failed',
-    options: {
-      projectId,
-      taskId,
-      error: CuNodeWebhookController.getErrorMessage(error, 'Unknown error'),
-    },
-  });
-}
-
-private static async closeTaskSafely(
-  taskId: TaskId,
-  environment: string
-): Promise<void> {
-  try {
-    await PmTaskService.closeTask(taskId, environment);
-  } catch (error) {
-    logger.error({
-      msg: 'PM task close failed after webhook processing',
-      options: {
-        environment,
-        taskId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-    });
-  }
-}
+- Updated non-success webhook flow to close the PM task after marking project status as `Fail`
+- Updated exception/failure handling flow to close the PM task after attempting to update project status/error
+- Kept success flow unchanged:
+  - mark project as `Pass`
+  - clear CU error message
+  - close PM task
+- Updated PM task close failure log message to be generic because close task is now used for both success and failure flows
+- Updated controller tests based on the new close-task behavior
