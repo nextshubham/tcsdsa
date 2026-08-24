@@ -1,14 +1,75 @@
-Updated CU node webhook processing so the PM task close API is called after webhook processing is completed, including non-success outcomes.
+private static readonly DAM_RELATIONSHIP_RETRY_ATTEMPTS = 3;
 
-As per the updated requirement, the workflow should update CU status/error fields and then close the PM task for all processing outcomes where `taskId` is available.
+private static readonly DAM_RELATIONSHIP_RETRY_DELAY_MS = 1000;
 
-## Changes
+private static async delay(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
 
-- Updated non-success webhook flow to close the PM task after marking project status as `Fail`
-- Updated exception/failure handling flow to close the PM task after attempting to update project status/error
-- Kept success flow unchanged:
-  - mark project as `Pass`
-  - clear CU error message
-  - close PM task
-- Updated PM task close failure log message to be generic because close task is now used for both success and failure flows
-- Updated controller tests based on the new close-task behavior
+private static isRetryableDamError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
+
+  const status = error.response?.status;
+
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    error.code === 'ECONNRESET' ||
+    error.code === 'ETIMEDOUT'
+  );
+}
+
+private static async executeWithRetry<T>(
+  operationName: string,
+  operation: () => Promise<T>,
+  logOptions: Record<string, unknown>
+): Promise<T> {
+  let lastError: unknown;
+
+  for (
+    let attempt = 1;
+    attempt <= DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      const shouldRetry =
+        attempt < DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS &&
+        DamClassificationService.isRetryableDamError(error);
+
+      logger.warn({
+        msg: 'DAM operation failed',
+        options: {
+          ...logOptions,
+          operationName,
+          attempt,
+          shouldRetry,
+          status: axios.isAxiosError(error) ? error.response?.status : undefined,
+          errorCode: axios.isAxiosError(error) ? error.code : undefined,
+        },
+      });
+
+      if (!shouldRetry) {
+        throw error;
+      }
+
+      await DamClassificationService.delay(
+        DamClassificationService.DAM_RELATIONSHIP_RETRY_DELAY_MS * attempt
+      );
+    }
+  }
+
+  throw lastError;
+}
