@@ -1,18 +1,12 @@
-private static readonly PROJECT_ID_BODY_PATTERN =
-  /\bproject_id\s*:\s*['"]?(\d+)['"]?/i;
+  await PmProjectStatusService.markFail(
+    projectId,
+    CuNodeWebhookController.getWarningMessage(response.warnings) ||
+      response.message,
+    environment
+  );
 
-private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
-  const projectIdMatch =
-    CuNodeWebhookController.PROJECT_ID_BODY_PATTERN.exec(body);
+  const body = CuNodeWebhookController.getRequiredBody(validatedPayload);
 
-  return projectIdMatch?.[1];
-}
-
-..
-
-private static extractProjectIdFromBodyString(body: string): OptionalProjectId {
-  const projectIdPattern = /\bproject_id\s*:\s*['"]?(\d+)['"]?/i;
-  const projectIdMatch = projectIdPattern.exec(body);
-
-  return projectIdMatch?.[1];
-}
+  if (body.taskId) {
+    await CuNodeWebhookController.closeTaskSafely(body.taskId, environment);
+  }
