@@ -10,3 +10,50 @@
   if (body.taskId) {
     await CuNodeWebhookController.closeTaskSafely(body.taskId, environment);
   }
+
+private static async handleProcessingFailure(
+  payload: CuNodeWebhookPayload,
+  error: unknown
+): Promise<void> {
+  const projectId = CuNodeWebhookController.extractProjectId(payload);
+  const taskId = CuNodeWebhookController.extractTaskId(payload);
+  const environment =
+    payload.environment ?? CuNodeWebhookController.getDefaultEnvironment();
+
+  await CuNodeWebhookController.markProjectFailSafely(
+    projectId,
+    environment,
+    error
+  );
+
+  if (taskId) {
+    await CuNodeWebhookController.closeTaskSafely(taskId, environment);
+  }
+
+  logger.error({
+    msg: 'PM classification webhook request processing failed',
+    options: {
+      projectId,
+      taskId,
+      error: CuNodeWebhookController.getErrorMessage(error, 'Unknown error'),
+    },
+  });
+}
+
+private static async closeTaskSafely(
+  taskId: TaskId,
+  environment: string
+): Promise<void> {
+  try {
+    await PmTaskService.closeTask(taskId, environment);
+  } catch (error) {
+    logger.error({
+      msg: 'PM task close failed after webhook processing',
+      options: {
+        environment,
+        taskId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+    });
+  }
+}
