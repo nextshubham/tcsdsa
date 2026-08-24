@@ -1,85 +1,54 @@
-private static readonly DAM_RELATIONSHIP_RETRY_ATTEMPTS = 3;
-
-private static readonly DAM_RELATIONSHIP_RETRY_DELAY_MS = 1000;
-
-private static async delay(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-private static normalizeError(error: unknown): Error {
-  if (error instanceof Error) {
-    return error;
-  }
-
-  return new Error(String(error));
-}
-
-private static isRetryableDamError(error: unknown): boolean {
-  if (!axios.isAxiosError(error)) {
-    return false;
-  }
-
-  const status = error.response?.status;
-
-  return (
-    status === 408 ||
-    status === 409 ||
-    status === 429 ||
-    status === 500 ||
-    status === 502 ||
-    status === 503 ||
-    status === 504 ||
-    error.code === 'ECONNRESET' ||
-    error.code === 'ETIMEDOUT'
-  );
-}
-
-private static async executeWithRetry<T>(
-  operationName: string,
-  operation: () => Promise<T>,
-  logOptions: Record<string, unknown>
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (
-    let attempt = 1;
-    attempt <= DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
-      return await operation();
-    } catch (error) {
-      const normalizedError = DamClassificationService.normalizeError(error);
-      lastError = normalizedError;
-
-      const shouldRetry =
-        attempt < DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS &&
-        DamClassificationService.isRetryableDamError(error);
-
-      logger.warn({
-        msg: 'DAM operation failed',
-        options: {
-          ...logOptions,
-          operationName,
-          attempt,
-          shouldRetry,
-          ...DamClassificationService.getErrorLogOptions(error),
+const response = await DamClassificationService.executeWithRetry(
+  'UPDATE_DAM_RELATIONSHIP_FIELD',
+  () =>
+    httpClient.put(
+      `/api/core/classification/${validatedFollowerClassificationId}`,
+      {
+        fields: {
+          addOrUpdate: [
+            {
+              id: validatedRelationshipFieldId,
+              localizedValues: [
+                {
+                  languageId,
+                  values: [validatedLeaderClassificationId],
+                },
+              ],
+            },
+          ],
         },
-      });
-
-      if (!shouldRetry) {
-        throw normalizedError;
+      },
+      {
+        headers: DamClassificationService.getJsonHeaders(),
       }
-
-      await DamClassificationService.delay(
-        DamClassificationService.DAM_RELATIONSHIP_RETRY_DELAY_MS * attempt
-      );
-    }
+    ),
+  {
+    environment,
+    followerClassificationId: validatedFollowerClassificationId,
+    leaderClassificationId: validatedLeaderClassificationId,
+    relationshipFieldId: validatedRelationshipFieldId,
   }
+);
 
-  throw lastError ?? new Error(`${operationName} failed`);
-}
 
+const response = await DamClassificationService.executeWithRetry(
+  'ADD_DAM_FOLLOWER_CLASSIFICATION',
+  () =>
+    httpClient.put(
+      `/api/core/classification/${validatedLeaderClassificationId}`,
+      {
+        followerClassifications: {
+          addOrUpdate: [validatedFollowerClassificationId],
+        },
+      },
+      {
+        headers: DamClassificationService.getJsonHeaders(),
+      }
+    ),
+  {
+    environment,
+    leaderClassificationId: validatedLeaderClassificationId,
+    followerClassificationId: validatedFollowerClassificationId,
+  }
+);
 
