@@ -1,99 +1,27 @@
+type RetryOptions = {
+  retries?: number;
+  delayIncrementMs?: number;
+  shouldRetry?: (error: unknown) => boolean;
+  onRetry?: (error: unknown, retryAttempt: number, delayMs: number) => void;
+};
+
+export const getRetryDelay = (
+  retryAttempt: number,
+  delayIncrementMs = HTTP_RETRY_DELAY_INCREMENT_MS
+): number => retryAttempt * delayIncrementMs;
+
+const delayIncrementMs =
+  options.delayIncrementMs ?? HTTP_RETRY_DELAY_INCREMENT_MS;
+
+const delayMs = getRetryDelay(nextRetryAttempt, delayIncrementMs);
 
 
-private static delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-private static normalizeError(error: unknown): Error {
-  if (error instanceof Error) {
-    return error;
-  }
-
-  return new Error('Unknown DAM operation error');
-}
-
-private static isRetryableDamError(error: unknown): boolean {
-  if (!axios.isAxiosError(error)) {
-    return false;
-  }
-
-  const status = error.response?.status;
-  const errorCode = error.code;
-
-  const hasRetryableStatus =
-    typeof status === 'number' &&
-    DamClassificationService.RETRYABLE_DAM_STATUS_CODES.has(status);
-
-  const hasRetryableErrorCode =
-    typeof errorCode === 'string' &&
-    DamClassificationService.RETRYABLE_DAM_ERROR_CODES.has(errorCode);
-
-  return hasRetryableStatus || hasRetryableErrorCode;
-}
-
-private static shouldRetryDamOperation(
-  error: unknown,
-  attempt: number
-): boolean {
-  return (
-    attempt < DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS &&
-    DamClassificationService.isRetryableDamError(error)
-  );
-}
-
-private static async executeDamOperationWithRetry<T>(
-  operationName: string,
-  operation: () => Promise<T>,
-  logOptions: Record<string, unknown>,
-  attempt = 1
-): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    const normalizedError = DamClassificationService.normalizeError(error);
-    const shouldRetry = DamClassificationService.shouldRetryDamOperation(
-      error,
-      attempt
-    );
-
-    logger.warn({
-      msg: shouldRetry
-        ? 'Retrying DAM operation after failure'
-        : 'DAM operation failed without retry',
-      options: {
-        ...logOptions,
-        operationName,
-        attempt,
-        maxAttempts: DamClassificationService.DAM_RELATIONSHIP_RETRY_ATTEMPTS,
-        retryDelayMs: shouldRetry
-          ? DamClassificationService.DAM_RELATIONSHIP_RETRY_DELAY_MS
-          : undefined,
-        ...DamClassificationService.getErrorLogOptions(error),
-      },
-    });
-
-    if (!shouldRetry) {
-      throw normalizedError;
-    }
-
-    await DamClassificationService.delay(
-      DamClassificationService.DAM_RELATIONSHIP_RETRY_DELAY_MS
-    );
-
-    return DamClassificationService.executeDamOperationWithRetry(
-      operationName,
-      operation,
-      logOptions,
-      attempt + 1
-    );
-  }
-}
 
 
-const response = await DamClassificationService.executeDamOperationWithRetry(
-  'UPDATE_DAM_RELATIONSHIP_FIELD',
+import { executeWithRetry, isRetryableHttpError } from '../utils/httpRetry';
+
+
+const response = await executeWithRetry(
   () =>
     httpClient.put(
       `/api/core/classification/${validatedFollowerClassificationId}`,
@@ -117,16 +45,28 @@ const response = await DamClassificationService.executeDamOperationWithRetry(
       }
     ),
   {
-    environment,
-    followerClassificationId: validatedFollowerClassificationId,
-    leaderClassificationId: validatedLeaderClassificationId,
-    relationshipFieldId: validatedRelationshipFieldId,
+    retries: 3,
+    delayIncrementMs: 5000,
+    shouldRetry: isRetryableHttpError,
+    onRetry: (error, retryAttempt, delayMs) => {
+      logger.warn({
+        msg: 'Retrying DAM relationship field update',
+        options: {
+          environment,
+          retryAttempt,
+          delayMs,
+          followerClassificationId: validatedFollowerClassificationId,
+          leaderClassificationId: validatedLeaderClassificationId,
+          relationshipFieldId: validatedRelationshipFieldId,
+          ...DamClassificationService.getErrorLogOptions(error),
+        },
+      });
+    },
   }
 );
 
 
-const response = await DamClassificationService.executeDamOperationWithRetry(
-  'ADD_DAM_FOLLOWER_CLASSIFICATION',
+const response = await executeWithRetry(
   () =>
     httpClient.put(
       `/api/core/classification/${validatedLeaderClassificationId}`,
@@ -140,9 +80,22 @@ const response = await DamClassificationService.executeDamOperationWithRetry(
       }
     ),
   {
-    environment,
-    leaderClassificationId: validatedLeaderClassificationId,
-    followerClassificationId: validatedFollowerClassificationId,
+    retries: 3,
+    delayIncrementMs: 5000,
+    shouldRetry: isRetryableHttpError,
+    onRetry: (error, retryAttempt, delayMs) => {
+      logger.warn({
+        msg: 'Retrying DAM follower classification update',
+        options: {
+          environment,
+          retryAttempt,
+          delayMs,
+          leaderClassificationId: validatedLeaderClassificationId,
+          followerClassificationId: validatedFollowerClassificationId,
+          ...DamClassificationService.getErrorLogOptions(error),
+        },
+      });
+    },
   }
 );
 
