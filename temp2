@@ -1,21 +1,4 @@
-private static readonly DAM_RELATIONSHIP_RETRY_ATTEMPTS = 3;
 
-private static readonly DAM_RELATIONSHIP_RETRY_DELAY_MS = 5000;
-
-private static readonly RETRYABLE_DAM_STATUS_CODES = new Set([
-  408,
-  409,
-  429,
-  500,
-  502,
-  503,
-  504,
-]);
-
-private static readonly RETRYABLE_DAM_ERROR_CODES = new Set([
-  'ECONNRESET',
-  'ETIMEDOUT',
-]);
 
 private static delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
