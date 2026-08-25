@@ -1,19 +1,95 @@
-## Summary
+private static isRetryableDamClassificationLinkingError(error: unknown): boolean {
+  if (isRetryableHttpError(error)) {
+    return true;
+  }
 
-Added retry handling for DAM relationship and follower update APIs to reduce intermittent failures during classification processing.
+  if (!axios.isAxiosError(error)) {
+    return false;
+  }
 
-## Changes
+  return error.response?.status === 400;
+}
 
-- Reused common retry utility from `src/utils/httpRetry.ts`
-- Added retry handling for DAM relationship field update
-- Added retry handling for DAM follower classification update
-- Configured retry delay for relationship/follower operations
-- Added retry logs with safe troubleshooting details
-- Avoided duplicate retry logic inside `damClassificationService.ts`
 
-## Reason
+Normally 400 should not be retried.
+But for relationship/follower APIs, Aprimo can return 400 when newly created classification is not available internally yet.
+So we retry 400 only for these two linking APIs, not globally.
 
-Relationship and follower APIs were failing intermittently after classification creation, causing CU error message:
+const response = await executeWithRetry(
+  () =>
+    httpClient.put(
+      `/api/core/classification/${validatedFollowerClassificationId}`,
+      {
+        fields: {
+          addOrUpdate: [
+            {
+              id: validatedRelationshipFieldId,
+              localizedValues: [
+                {
+                  languageId,
+                  values: [validatedLeaderClassificationId],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        headers: DamClassificationService.getJsonHeaders(),
+      }
+    ),
+  {
+    retries: 3,
+    delayIncrementMs: 5000,
+    shouldRetry: DamClassificationService.isRetryableDamClassificationLinkingError,
+    onRetry: (error, retryAttempt, delayMs) => {
+      logger.warn({
+        msg: 'Retrying DAM relationship field update',
+        options: {
+          environment,
+          retryAttempt,
+          delayMs,
+          followerClassificationId: validatedFollowerClassificationId,
+          leaderClassificationId: validatedLeaderClassificationId,
+          relationshipFieldId: validatedRelationshipFieldId,
+          ...DamClassificationService.getErrorLogOptions(error),
+        },
+      });
+    },
+  }
+);
 
-```text
-Relationship/follower processing failed.
+
+
+const response = await executeWithRetry(
+  () =>
+    httpClient.put(
+      `/api/core/classification/${validatedLeaderClassificationId}`,
+      {
+        followerClassifications: {
+          addOrUpdate: [validatedFollowerClassificationId],
+        },
+      },
+      {
+        headers: DamClassificationService.getJsonHeaders(),
+      }
+    ),
+  {
+    retries: 3,
+    delayIncrementMs: 5000,
+    shouldRetry: DamClassificationService.isRetryableDamClassificationLinkingError,
+    onRetry: (error, retryAttempt, delayMs) => {
+      logger.warn({
+        msg: 'Retrying DAM follower classification update',
+        options: {
+          environment,
+          retryAttempt,
+          delayMs,
+          leaderClassificationId: validatedLeaderClassificationId,
+          followerClassificationId: validatedFollowerClassificationId,
+          ...DamClassificationService.getErrorLogOptions(error),
+        },
+      });
+    },
+  }
+);
