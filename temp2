@@ -1,2 +1,12 @@
-shouldRetry: (error) =>
-  DamClassificationService.isRetryableDamClassificationLinkingError(error),
+Added scoped retry handling for DAM relationship and follower update APIs.
+
+The relationship and follower APIs can fail intermittently when newly created classifications are not immediately available inside Aprimo. This change retries those linking operations with delay before marking the workflow as failed.
+
+## Changes
+
+- Reused common retry utility from `src/utils/httpRetry.ts`
+- Added custom retry condition for DAM classification linking APIs
+- Retried relationship field update when Aprimo returns retryable errors or `400`
+- Retried follower classification update when Aprimo returns retryable errors or `400`
+- Added retry logging with classification IDs, relationship field ID, retry attempt and delay
+- Kept retry scoped only to relationship/follower APIs
