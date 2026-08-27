@@ -1,12 +1,64 @@
-Added scoped retry handling for DAM relationship and follower update APIs.
+release: promote PM classification webhook changes to QA
 
-The relationship and follower APIs can fail intermittently when newly created classifications are not immediately available inside Aprimo. This change retries those linking operations with delay before marking the workflow as failed.
+## Summary
 
-## Changes
+Promoting the latest PM classification webhook changes from `development` to `qa`.
 
-- Reused common retry utility from `src/utils/httpRetry.ts`
-- Added custom retry condition for DAM classification linking APIs
-- Retried relationship field update when Aprimo returns retryable errors or `400`
-- Retried follower classification update when Aprimo returns retryable errors or `400`
-- Added retry logging with classification IDs, relationship field ID, retry attempt and delay
-- Kept retry scoped only to relationship/follower APIs
+This release includes DAM classification creation, relationship processing, follower classification processing, and retry handling for intermittent Aprimo readiness issues.
+
+## Changes Included
+
+### Classification Processing
+
+- Added/updated PM classification webhook processing based on InputParameters.
+- Reads InputParameters from PM project configuration.
+- Supports classification creation based on PM extended attribute values.
+- Supports InputParameters with `ObjectType` as `Project` or `Activity`.
+- Reads classification values from Project extended attributes when `ObjectType = Project`.
+- Reads classification values from Activity extended attributes when `ObjectType = Activity`.
+- Creates DAM classifications under the configured `ParentNamePath`.
+- Handles missing or empty extended attribute values with warnings instead of failing the full flow immediately.
+- Returns success, partial success, or failure based on classification processing result.
+
+### Relationship Processing
+
+- Added/updated DAM relationship field update logic.
+- Supports linking follower classification to leader classification using configured relationship field.
+- Uses `relationshipField` from InputParameters to update the DAM classification relationship field.
+- Validates required relationship inputs before calling DAM APIs.
+- Logs relationship processing details with safe identifiers for troubleshooting.
+
+### Follower Processing
+
+- Added/updated DAM follower classification processing.
+- Supports adding follower classification under leader classification.
+- Uses created classification IDs from the classification processing result.
+- Validates leader and follower classification IDs before calling DAM APIs.
+- Logs follower processing details with safe classification identifiers.
+
+### Retry Handling
+
+- Added scoped retry handling for DAM classification linking APIs.
+- Retry is applied only to:
+  - DAM relationship field update API
+  - DAM follower classification update API
+- Added retry support for Aprimo `400` readiness failures where newly created classifications may not be immediately available internally.
+- Kept `400` retry scoped only to relationship/follower APIs, not globally.
+- Reused common retry utility instead of duplicating retry logic.
+- Added retry logs with retry attempt, delay, classification IDs, relationship field ID, and safe error details.
+
+### Error Handling and Logging
+
+- Improved logs for classification, relationship, and follower processing.
+- Added safer troubleshooting logs without exposing sensitive values.
+- Ensures failures are captured with meaningful messages for CU error/status handling.
+- Helps identify whether failure occurred during classification creation, relationship update, or follower update.
+
+## Reason
+
+During testing, DAM classification creation was successful, but immediate relationship or follower updates sometimes failed because Aprimo takes time internally before a newly created classification is ready for linking.
+
+Observed scenario:
+
+```text
+PUT /api/core/classification/{followerClassificationId}
