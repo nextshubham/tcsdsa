@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>High Level Design - PM Classification Webhook API</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; line-height: 1.45; margin: 40px; color: #222; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  h2 { font-size: 21px; margin-top: 28px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  h3 { font-size: 17px; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 18px; }
+  th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
+  th { background: #f3f3f3; text-align: left; }
+  pre { background: #f7f7f7; border: 1px solid #ddd; padding: 12px; overflow-x: auto; white-space: pre-wrap; }
+  code { font-family: Consolas, 'Courier New', monospace; }
+  .note { font-style: italic; }
+</style>
+</head>
+<body>
+<h1>High Level Design - PM Classification Webhook API</h1>
+
+<h2>1. Document Information</h2>
+<table><tr><th>Field</th><th>Value</th></tr>
+<tr><td>Document Name</td><td>High Level Design - PM Classification Webhook API</td></tr>
+<tr><td>Application</td><td>PM Classification Webhook Utility</td></tr>
+<tr><td>Technology</td><td>Node.js, TypeScript, Express</td></tr>
+<tr><td>Source System</td><td>Aprimo PM / Kong</td></tr>
+<tr><td>Target Systems</td><td>Aprimo PM API, Aprimo DAM API</td></tr>
+<tr><td>Document Type</td><td>High Level Design</td></tr>
+<tr><td>Version</td><td>1.0</td></tr>
+<tr><td>Status</td><td>Draft</td></tr></table>
+
+<h2>2. Purpose</h2>
+<p>The purpose of this API is to receive webhook events from Aprimo PM through Kong, process PM project classification input parameters, create or update required classifications in Aprimo DAM, update the processing status back to Aprimo PM, and close the related PM task.</p>
+<p>This API helps automate classification creation and relationship/follower processing based on project or activity extended attribute values.</p>
+
+<h2>3. Business Requirement</h2>
+<p>When a PM workflow event is triggered, the system should automatically process classification-related configuration from the PM project, create the required DAM classifications, establish classification relationships if configured, add follower classifications if configured, update PM project status fields, and close the PM task.</p>
+<p>The process should support both:</p>
+<ul><li>ObjectType = Project</li><li>ObjectType = Activity</li></ul>
+<p>For Project, the classification value is read from project extended attributes.</p>
+<p>For Activity, the classification value is read from activity extended attributes.</p>
+
+<h2>4. Scope</h2>
+<h3>In Scope</h3>
+<ol><li>Receive webhook request from Aprimo PM/Kong</li><li>Validate and normalize webhook payload</li><li>Extract projectId and taskId</li><li>Fetch PM project details</li><li>Read InputParameters from project extended attributes</li><li>Fetch activity details when ObjectType is Activity</li><li>Create DAM classifications</li><li>Process classification relationships</li><li>Add follower classifications</li><li>Update CU Status and CU Error Message in PM</li><li>Close PM task after processing</li><li>Log important processing steps and errors</li></ol>
+<h3>Out of Scope</h3>
+<ol><li>UI changes in Aprimo PM or DAM</li><li>Manual classification creation</li><li>DAM field configuration changes</li><li>Kong route creation details</li><li>User management or role management</li><li>Manual retry from UI</li></ol>
+
+<h2>5. Systems Involved</h2>
+<table><tr><th>System</th><th>Responsibility</th></tr>
+<tr><td>Aprimo PM</td><td>Triggers webhook, stores project/task/activity data</td></tr>
+<tr><td>Kong API Gateway</td><td>Routes webhook request to Node.js API</td></tr>
+<tr><td>Node.js Webhook API</td><td>Validates payload, controls process flow, calls PM/DAM APIs</td></tr>
+<tr><td>Aprimo PM API</td><td>Provides project/activity details, updates status fields, closes task</td></tr>
+<tr><td>Aprimo DAM API</td><td>Creates classifications, updates relationships, adds followers</td></tr>
+<tr><td>Logging/Monitoring</td><td>Captures execution details, warnings and failures</td></tr></table>
+
+<h2>6. High-Level Architecture</h2>
+<pre><code>flowchart LR
+  A["Aprimo PM"] --&gt; B["Kong API Gateway"]
+  B --&gt; C["Node.js Webhook API"]
+  C --&gt; D["Webhook Controller"]
+  D --&gt; E["PM Classification Webhook Service"]
+  E --&gt; F["Aprimo PM API"]
+  E --&gt; G["Aprimo DAM API"]
+  C --&gt; H["Central Error Handler"]
+  C --&gt; I["Structured Logger"]</code></pre>
+
+<h2>7. High-Level Process Flow</h2>
+<ol><li>Aprimo PM sends webhook event through Kong.</li><li>Kong forwards the request to Node.js Webhook API.</li><li>API validates and normalizes the webhook payload.</li><li>API extracts projectId and taskId.</li><li>API fetches project details from Aprimo PM.</li><li>API reads InputParameters from project extended attributes.</li><li>API checks each InputParameter ObjectType.</li><li>If ObjectType is Project, value is read from project extended attributes.</li><li>If ObjectType is Activity, API fetches activity details and reads value from activity extended attributes.</li><li>API creates required classification in Aprimo DAM.</li><li>API processes relationship field if configured.</li><li>API adds follower classification if configured.</li><li>API updates PM project CU Status and CU Error Message.</li><li>API closes the PM task.</li><li>API returns final response to caller.</li></ol>
+
+<h2>8. Sequence Diagram</h2>
+<pre><code>sequenceDiagram
+  participant PM as Aprimo PM
+  participant Kong as Kong API Gateway
+  participant API as Node.js Webhook API
+  participant PMAPI as Aprimo PM API
+  participant DAMAPI as Aprimo DAM API
+
+  PM-&gt;&gt;Kong: Trigger webhook event
+  Kong-&gt;&gt;API: Forward webhook payload
+  API-&gt;&gt;API: Validate and normalize payload
+  API-&gt;&gt;API: Extract projectId and taskId
+  API-&gt;&gt;PMAPI: Get project details
+  PMAPI--&gt;&gt;API: Return project details
+  API-&gt;&gt;API: Read InputParameters
+  API-&gt;&gt;PMAPI: Get activity details if ObjectType is Activity
+  PMAPI--&gt;&gt;API: Return activity details
+  API-&gt;&gt;DAMAPI: Create DAM classification
+  DAMAPI--&gt;&gt;API: Return classification details
+  API-&gt;&gt;DAMAPI: Update relationship/follower if configured
+  DAMAPI--&gt;&gt;API: Return update response
+  API-&gt;&gt;PMAPI: Update CU Status and CU Error Message
+  API-&gt;&gt;PMAPI: Close PM task
+  API--&gt;&gt;Kong: Return processing response
+  Kong--&gt;&gt;PM: Return response</code></pre>
+
+<h2>9. API Overview</h2>
+<table><tr><th>Item</th><th>Details</th></tr>
+<tr><td>API Name</td><td>PM Classification Webhook API</td></tr>
+<tr><td>Method</td><td>POST</td></tr>
+<tr><td>Endpoint</td><td>/api/v1/webhook/pm-classification</td></tr>
+<tr><td>Request Source</td><td>Aprimo PM through Kong</td></tr>
+<tr><td>Response Format</td><td>JSON</td></tr>
+<tr><td>Authentication</td><td>Managed through Kong/API security configuration where applicable</td></tr>
+<tr><td>Main Processing Service</td><td>PmClassificationWebhookService</td></tr></table>
+<p class="note">Note: If the actual route name is different in code, update the endpoint value before publishing.</p>
+
+<h2>10. Main Request Fields</h2>
+<table><tr><th>Field</th><th>Purpose</th></tr>
+<tr><td>ObjectId</td><td>PM task id from Aprimo webhook</td></tr>
+<tr><td>Body.project_id / Body.projectId</td><td>PM project id</td></tr>
+<tr><td>Environment / environment field</td><td>Target environment</td></tr>
+<tr><td>ObjectResourceName</td><td>Source object information</td></tr>
+<tr><td>EventId</td><td>Webhook event identifier</td></tr>
+<tr><td>EventTime</td><td>Webhook event timestamp</td></tr></table>
+<p>The webhook body may be received as a JSON object or as a string. The API normalizes the payload before processing.</p>
+
+<h2>11. InputParameters Design</h2>
+<p>The API reads InputParameters from PM project extended attributes. This configuration controls how classifications should be created.</p>
+<table><tr><th>Field</th><th>Purpose</th></tr>
+<tr><td>ExtAttrID</td><td>Source extended attribute id</td></tr>
+<tr><td>ObjectType</td><td>Defines whether value should be read from Project or Activity</td></tr>
+<tr><td>ParentNamePath</td><td>DAM parent classification path</td></tr>
+<tr><td>EstablishRelationship</td><td>Indicates whether relationship should be created</td></tr>
+<tr><td>RelationshipField</td><td>DAM relationship field name/id</td></tr>
+<tr><td>AddToFollowers</td><td>Indicates whether follower classification should be added</td></tr>
+<tr><td>LeaderExtAttr</td><td>Leader extended attribute reference</td></tr></table>
+<p>Supported ObjectType values:</p><ul><li>Project</li><li>Activity</li></ul>
+<p>If ObjectType is missing, the API treats it as Project for backward compatibility.</p>
+
+<h2>12. Component Responsibilities</h2>
+<table><tr><th>Component</th><th>Responsibility</th></tr>
+<tr><td>Webhook Controller</td><td>Receives request, validates payload, sends response</td></tr>
+<tr><td>Webhook Service</td><td>Coordinates PM/DAM processing</td></tr>
+<tr><td>PM Project Service</td><td>Fetches PM project details</td></tr>
+<tr><td>PM Activity Service</td><td>Fetches PM activity details when required</td></tr>
+<tr><td>DAM Classification Service</td><td>Creates classifications and updates DAM relationship/follower data</td></tr>
+<tr><td>PM Project Status Service</td><td>Updates CU Status and CU Error Message</td></tr>
+<tr><td>PM Task Service</td><td>Closes PM task</td></tr>
+<tr><td>Token Service</td><td>Handles Aprimo access token generation/caching</td></tr>
+<tr><td>HTTP Client</td><td>Common API client for external calls</td></tr>
+<tr><td>Logger</td><td>Captures structured logs</td></tr>
+<tr><td>Error Handler</td><td>Handles API errors consistently</td></tr></table>
+
+<h2>13. Status Handling</h2>
+<p>The API updates PM project status before closing the PM task.</p>
+<table><tr><th>Processing Result</th><th>CU Status</th><th>CU Error Message</th><th>Task Close</th></tr>
+<tr><td>Success</td><td>PASS</td><td>Blank/Cleared</td><td>Yes</td></tr>
+<tr><td>Partial Success</td><td>FAIL</td><td>Warning/error message</td><td>Yes</td></tr>
+<tr><td>Failure</td><td>FAIL</td><td>Actual error message</td><td>Yes</td></tr></table>
+<p><strong>Important rule:</strong> CU Status and CU Error Message should be updated before closing the PM task.</p>
+
+<h2>14. Error Handling Design</h2>
+<p>The API follows centralized error handling.</p>
+<ol><li>Missing projectId</li><li>Missing or invalid InputParameters</li><li>PM project details API failure</li><li>Activity details API failure</li><li>DAM classification creation failure</li><li>Relationship/follower update failure</li><li>PM status update failure</li><li>PM task close failure</li><li>Token generation failure</li><li>Invalid environment configuration</li></ol>
+<p>The API should not expose sensitive internal error details to the caller. Internal details should be captured only in secure logs.</p>
+
+<h2>15. Retry Design</h2>
+<p>Some DAM relationship or follower update calls may fail temporarily because the classification may not be immediately ready after creation.</p>
+<p>To handle this, retry is applied only for selected DAM linking operations:</p>
+<ol><li>DAM relationship field update</li><li>DAM follower classification update</li></ol>
+<p>Retry should not be applied globally for every API call.</p>
+<p>This avoids unnecessary retries for validation errors while still handling temporary Aprimo readiness issues.</p>
+
+<h2>16. Logging and Monitoring</h2>
+<p>The API uses structured logging for traceability.</p>
+<ol><li>Webhook request received</li><li>projectId and taskId resolved</li><li>Project details fetched</li><li>InputParameters resolved</li><li>Activity details fetched if required</li><li>Classification creation started/completed</li><li>Relationship processing started/completed</li><li>Follower processing started/completed</li><li>CU Status and CU Error update started/completed</li><li>PM task close started/completed</li><li>Error/warning captured</li></ol>
+<p>Logs should include safe identifiers such as projectId, taskId, environment, eventId, triggerType, classificationId and processingStatus. Logs should not include client_secret, access_token, Authorization header, password or sensitive payload data.</p>
+
+<h2>17. Security Considerations</h2>
+<ol><li>API should be exposed through Kong Gateway.</li><li>Authentication and authorization should be controlled at gateway level where applicable.</li><li>Aprimo client id, client secret and tokens should not be hardcoded.</li><li>Secrets should be stored in environment variables or approved secret management.</li><li>Request payload should be validated before processing.</li><li>Sensitive values should be masked in logs.</li><li>Internal stack traces should not be exposed to API consumers.</li><li>Environment-specific configuration should remain externalized.</li></ol>
+
+<h2>18. Deployment and Configuration</h2>
+<p>The API should support multiple environments using externalized configuration.</p>
+<p>Expected environments: development, qa, production.</p>
+<p>Configuration should include Aprimo PM base URL, Aprimo DAM base URL, Client ID, Client Secret, Token URL, Classification language id, CU Status extended attribute id, CU Status PASS value, CU Status FAIL value and CU Error Message extended attribute id.</p>
+<p>No secrets should be committed into source code.</p>
+
+<h2>19. Assumptions</h2>
+<ol><li>Kong will forward the webhook request to the correct Node.js API endpoint.</li><li>Webhook payload will contain project id either in body.projectId, body.project_id or Body string.</li><li>ObjectId from webhook represents PM task id.</li><li>InputParameters will be configured on the PM project.</li><li>Required extended attributes will exist in PM project or activity.</li><li>DAM parent classification path will already exist.</li><li>Aprimo PM and DAM APIs will be available during processing.</li></ol>
+
+<h2>20. Risks and Mitigation</h2>
+<table><tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr>
+<tr><td>Missing projectId</td><td>Processing cannot continue</td><td>Validate payload and mark failure where possible</td></tr>
+<tr><td>Missing InputParameters</td><td>Classification cannot be created</td><td>Log clear error and update CU Error Message</td></tr>
+<tr><td>Activity id missing for Activity ObjectType</td><td>Activity attributes cannot be read</td><td>Fail with clear error message</td></tr>
+<tr><td>DAM classification not immediately ready</td><td>Relationship/follower update may fail</td><td>Retry selected DAM linking operations</td></tr>
+<tr><td>Wrong environment config</td><td>API may call wrong Aprimo environment</td><td>Use environment-specific config and review before deployment</td></tr>
+<tr><td>Secrets logged accidentally</td><td>Security issue</td><td>Mask sensitive fields in logs</td></tr>
+<tr><td>Task closed before status update</td><td>PM status may remain blank</td><td>Always update status before closing task</td></tr></table>
+
+<h2>21. Non-Functional Requirements</h2>
+<ol><li>API should follow Node.js/TypeScript coding standards.</li><li>API should use structured logging.</li><li>API should handle errors centrally.</li><li>API should avoid logging secrets.</li><li>API should be reusable and maintainable.</li><li>API should have unit test coverage for success, partial success and failure flows.</li><li>API should follow SonarQube quality expectations.</li><li>API should externalize environment-specific configuration.</li></ol>
+
+<h2>22. Open Points</h2>
+<table><tr><th>Item</th><th>Status</th></tr>
+<tr><td>Final Kong route URL</td><td>To be confirmed</td></tr>
+<tr><td>Final PM/DAM environment URLs</td><td>To be confirmed</td></tr>
+<tr><td>Final extended attribute ids</td><td>To be confirmed</td></tr>
+<tr><td>Final task close behavior in all scenarios</td><td>Confirmed as close after status update</td></tr>
+<tr><td>Final retry count and delay</td><td>To be confirmed</td></tr>
+<tr><td>Monitoring dashboard/alerting</td><td>To be confirmed</td></tr></table>
+
+<h2>23. Summary</h2>
+<p>The PM Classification Webhook API automates classification creation and relationship/follower processing in Aprimo DAM based on PM project or activity data. The API receives webhook events through Kong, fetches required PM details, creates classifications in DAM, updates PM project status, and closes the PM task.</p>
+<p>The design keeps gateway concerns in Kong, business orchestration in the Node.js service layer, Aprimo communication in dedicated services, and error/logging logic centralized for maintainability and production support.</p>
+</body></html>
