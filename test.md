@@ -1,363 +1,577 @@
-# High Level Design - PM Classification Webhook API
+# Low Level Design - PM Classification Webhook API
 
 ## 1. Document Information
 
 | Field | Value |
 |---|---|
-| Document Name | High Level Design - PM Classification Webhook API |
+| Document Name | Low Level Design - PM Classification Webhook API |
 | Application | PM Classification Webhook Utility |
+| Module | PM Classification Webhook API |
 | Technology | Node.js, TypeScript, Express |
 | Source System | Aprimo PM / Kong |
 | Target Systems | Aprimo PM API, Aprimo DAM API |
-| Document Type | High Level Design |
-| Version | 1.0 |
-| Status | Draft |
+| Document Type | Low Level Design |
 
-## 2. Purpose
+---
 
-The purpose of this API is to receive webhook events from Aprimo PM through Kong, process PM project classification input parameters, create or update required classifications in Aprimo DAM, update the processing status back to Aprimo PM, and close the related PM task.
+## 2. API Overview
 
-This API helps automate classification creation and relationship/follower processing based on project or activity extended attribute values.
+The PM Classification Webhook API receives webhook events from Aprimo PM through Kong and processes classification creation in Aprimo DAM.
 
-## 3. Business Requirement
-
-When a PM workflow event is triggered, the system should automatically process classification-related configuration from the PM project, create the required DAM classifications, establish classification relationships if configured, add follower classifications if configured, update PM project status fields, and close the PM task.
-
-The process should support both:
-
-- ObjectType = Project
-- ObjectType = Activity
-
-For Project, the classification value is read from project extended attributes.
-
-For Activity, the classification value is read from activity extended attributes.
-
-## 4. Scope
-
-### In Scope
-
-1. Receive webhook request from Aprimo PM/Kong
-2. Validate and normalize webhook payload
-3. Extract projectId and taskId
-4. Fetch PM project details
-5. Read InputParameters from project extended attributes
-6. Fetch activity details when ObjectType is Activity
-7. Create DAM classifications
-8. Process classification relationships
-9. Add follower classifications
-10. Update CU Status and CU Error Message in PM
-11. Close PM task after processing
-12. Log important processing steps and errors
-
-### Out of Scope
-
-1. UI changes in Aprimo PM or DAM
-2. Manual classification creation
-3. DAM field configuration changes
-4. Kong route creation details
-5. User management or role management
-6. Manual retry from UI
-
-## 5. Systems Involved
-
-| System | Responsibility |
-|---|---|
-| Aprimo PM | Triggers webhook, stores project/task/activity data |
-| Kong API Gateway | Routes webhook request to Node.js API |
-| Node.js Webhook API | Validates payload, controls process flow, calls PM/DAM APIs |
-| Aprimo PM API | Provides project/activity details, updates status fields, closes task |
-| Aprimo DAM API | Creates classifications, updates relationships, adds followers |
-| Logging/Monitoring | Captures execution details, warnings and failures |
-
-## 6. High-Level Architecture
-
-```mermaid
-flowchart LR
-  A["Aprimo PM"] --> B["Kong API Gateway"]
-  B --> C["Node.js Webhook API"]
-  C --> D["Webhook Controller"]
-  D --> E["PM Classification Webhook Service"]
-  E --> F["Aprimo PM API"]
-  E --> G["Aprimo DAM API"]
-  C --> H["Central Error Handler"]
-  C --> I["Structured Logger"]
-```
-
-## 7. High-Level Process Flow
-
-1. Aprimo PM sends webhook event through Kong.
-2. Kong forwards the request to Node.js Webhook API.
-3. API validates and normalizes the webhook payload.
-4. API extracts projectId and taskId.
-5. API fetches project details from Aprimo PM.
-6. API reads InputParameters from project extended attributes.
-7. API checks each InputParameter ObjectType.
-8. If ObjectType is Project, value is read from project extended attributes.
-9. If ObjectType is Activity, API fetches activity details and reads value from activity extended attributes.
-10. API creates required classification in Aprimo DAM.
-11. API processes relationship field if configured.
-12. API adds follower classification if configured.
-13. API updates PM project CU Status and CU Error Message.
-14. API closes the PM task.
-15. API returns final response to caller.
-
-## 8. Sequence Diagram
-
-```mermaid
-sequenceDiagram
-  participant PM as Aprimo PM
-  participant Kong as Kong API Gateway
-  participant API as Node.js Webhook API
-  participant PMAPI as Aprimo PM API
-  participant DAMAPI as Aprimo DAM API
-
-  PM->>Kong: Trigger webhook event
-  Kong->>API: Forward webhook payload
-  API->>API: Validate and normalize payload
-  API->>API: Extract projectId and taskId
-  API->>PMAPI: Get project details
-  PMAPI-->>API: Return project details
-  API->>API: Read InputParameters
-  API->>PMAPI: Get activity details if ObjectType is Activity
-  PMAPI-->>API: Return activity details
-  API->>DAMAPI: Create DAM classification
-  DAMAPI-->>API: Return classification details
-  API->>DAMAPI: Update relationship/follower if configured
-  DAMAPI-->>API: Return update response
-  API->>PMAPI: Update CU Status and CU Error Message
-  API->>PMAPI: Close PM task
-  API-->>Kong: Return processing response
-  Kong-->>PM: Return response
-```
-
-## 9. API Overview
+The API validates and normalizes the webhook payload, extracts project and task identifiers, fetches required PM project and activity details, reads `InputParameters`, creates classifications in DAM, processes relationship/follower mappings, updates PM project status fields, and closes the related PM task.
 
 | Item | Details |
 |---|---|
 | API Name | PM Classification Webhook API |
-| Method | POST |
-| Endpoint | `/api/v1/webhook/pm-classification` |
-| Request Source | Aprimo PM through Kong |
+| HTTP Method | `POST` |
+| Endpoint | `/api/v1/webhook/create-classification` |
+| Content-Type | `application/json` |
+| Response Type | `application/json` |
+| Caller | Aprimo PM through Kong |
+| Main Trigger | `PM_CLASSIFICATION_CREATE` |
+| Authentication | Managed through Kong/API gateway where applicable |
+
+---
+
+## 3. API Contract and Validation
+
+### 3.1 API Contract
+
+| Contract Item | Details |
+|---|---|
+| Request Format | JSON webhook payload from Aprimo PM/Kong |
 | Response Format | JSON |
-| Authentication | Managed through Kong/API security configuration where applicable |
-| Main Processing Service | `PmClassificationWebhookService` |
+| Main Identifier | `projectId` |
+| Task Identifier | `taskId` from webhook `ObjectId` |
+| Processing Status | `SUCCESS`, `PARTIAL_SUCCESS`, `FAILED` |
+| Final Task Action | Close PM task after status update attempt |
 
-Note: If the actual route name is different in code, update the endpoint value before publishing.
+### 3.2 Validation Rules
 
-## 10. Main Request Fields
-
-| Field | Purpose |
+| Validation | Required Behavior |
 |---|---|
-| `ObjectId` | PM task id from Aprimo webhook |
-| `Body.project_id` / `Body.projectId` | PM project id |
-| `Environment` / environment field | Target environment |
-| `ObjectResourceName` | Source object information |
-| `EventId` | Webhook event identifier |
-| `EventTime` | Webhook event timestamp |
+| `environment` is missing | Reject request or mark failure where possible. |
+| `projectId` is missing | Stop processing because PM project details cannot be fetched. |
+| `taskId` is missing | Continue processing if possible, skip task close and log clearly. |
+| `InputParameters` is missing | Mark PM project as FAIL and close task if task id is available. |
+| `InputParameters` is invalid JSON | Mark PM project as FAIL and close task if task id is available. |
+| `ObjectType` is missing | Default to `Project` for backward compatibility. |
+| `ObjectType` is not `Project` or `Activity` | Fail validation with a clear error message. |
+| `ObjectType = Activity` but `activityId` is missing | Mark PM project as FAIL and close task if task id is available. |
+| DAM parent classification path is missing | Fail classification creation for that input parameter. |
+| Relationship field is missing when relationship is enabled | Fail relationship processing for that mapping. |
 
-The webhook body may be received as a JSON object or as a string. The API normalizes the payload before processing.
+---
 
-## 11. InputParameters Design
+## 4. Request Payload Design
 
-The API reads InputParameters from PM project extended attributes. This configuration controls how classifications should be created.
+### 4.1 Expected Request Fields
 
-Each input parameter can contain:
-
-| Field | Purpose |
-|---|---|
-| `ExtAttrID` | Source extended attribute id |
-| `ObjectType` | Defines whether value should be read from Project or Activity |
-| `ParentNamePath` | DAM parent classification path |
-| `EstablishRelationship` | Indicates whether relationship should be created |
-| `RelationshipField` | DAM relationship field name/id |
-| `AddToFollowers` | Indicates whether follower classification should be added |
-| `LeaderExtAttr` | Leader extended attribute reference |
-
-Supported ObjectType values:
-
-- Project
-- Activity
-
-If ObjectType is missing, the API treats it as Project for backward compatibility.
-
-## 12. Component Responsibilities
-
-| Component | Responsibility |
-|---|---|
-| Webhook Controller | Receives request, validates payload, sends response |
-| Webhook Service | Coordinates PM/DAM processing |
-| PM Project Service | Fetches PM project details |
-| PM Activity Service | Fetches PM activity details when required |
-| DAM Classification Service | Creates classifications and updates DAM relationship/follower data |
-| PM Project Status Service | Updates CU Status and CU Error Message |
-| PM Task Service | Closes PM task |
-| Token Service | Handles Aprimo access token generation/caching |
-| HTTP Client | Common API client for external calls |
-| Logger | Captures structured logs |
-| Error Handler | Handles API errors consistently |
-
-## 13. Status Handling
-
-The API updates PM project status before closing the PM task.
-
-| Processing Result | CU Status | CU Error Message | Task Close |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| Success | PASS | Blank/Cleared | Yes |
-| Partial Success | FAIL | Warning/error message | Yes |
-| Failure | FAIL | Actual error message | Yes |
+| `ObjectId` | `string` / `number` | Yes for task close | PM task id from Aprimo webhook. |
+| `Body` | `object` / `string` | Yes | Contains project details such as `project_id` or `projectId`. |
+| `Environment` | `string` | Yes | Target environment. |
 
-Important rule: CU Status and CU Error Message should be updated before closing the PM task.
+### 4.2 Payload Handling Rule
 
-## 14. Error Handling Design
+The webhook `Body` may arrive as either a JSON object or a string. The controller must normalize both formats and extract the same `projectId` value.
 
-The API follows centralized error handling.
+Example object body:
 
-Expected error scenarios:
+```json
+{
+  "Body": {
+    "project_id": 271114,
+    "step_type": 9,
+    "status": "Approved"
+  }
+}
+```
 
-1. Missing projectId
-2. Missing or invalid InputParameters
-3. PM project details API failure
-4. Activity details API failure
-5. DAM classification creation failure
-6. Relationship/follower update failure
-7. PM status update failure
-8. PM task close failure
-9. Token generation failure
-10. Invalid environment configuration
+Example string body:
 
-The API should not expose sensitive internal error details to the caller. Internal details should be captured only in secure logs.
+```json
+{
+  "Body": "{project_id: 271114, step_type: 9, status: 'Approved', test_mode: 1}"
+}
+```
 
-## 15. Retry Design
+### 4.3 Normalized Request Model
 
-Some DAM relationship or follower update calls may fail temporarily because the classification may not be immediately ready after creation.
+```ts
+export interface CuNodeWebhookRequest {
+  environment: string;
+  triggerType: string;
+  projectId: string | number;
+  taskId?: string | number;
+  eventId?: string;
+  eventTime?: string;
+  objectResourceName?: string;
+}
+```
 
-To handle this, retry is applied only for selected DAM linking operations:
+### 4.4 Identifier Mapping
 
-1. DAM relationship field update
-2. DAM follower classification update
-
-Retry should not be applied globally for every API call.
-
-This avoids unnecessary retries for validation errors while still handling temporary Aprimo readiness issues.
-
-## 16. Logging and Monitoring
-
-The API uses structured logging for traceability.
-
-Important logging points:
-
-1. Webhook request received
-2. projectId and taskId resolved
-3. Project details fetched
-4. InputParameters resolved
-5. Activity details fetched if required
-6. Classification creation started/completed
-7. Relationship processing started/completed
-8. Follower processing started/completed
-9. CU Status and CU Error update started/completed
-10. PM task close started/completed
-11. Error/warning captured
-
-Logs should include safe identifiers such as:
-
-- projectId
-- taskId
-- environment
-- eventId
-- triggerType
-- classificationId
-- processingStatus
-
-Logs should not include:
-
-- client_secret
-- access_token
-- Authorization header
-- password
-- sensitive payload data
-
-## 17. Security Considerations
-
-1. API should be exposed through Kong Gateway.
-2. Authentication and authorization should be controlled at gateway level where applicable.
-3. Aprimo client id, client secret and tokens should not be hardcoded.
-4. Secrets should be stored in environment variables or approved secret management.
-5. Request payload should be validated before processing.
-6. Sensitive values should be masked in logs.
-7. Internal stack traces should not be exposed to API consumers.
-8. Environment-specific configuration should remain externalized.
-
-## 18. Deployment and Configuration
-
-The API should support multiple environments using externalized configuration.
-
-Expected environments:
-
-- development
-- qa
-- production
-
-Configuration should include:
-
-- Aprimo PM base URL
-- Aprimo DAM base URL
-- Client ID
-- Client Secret
-- Token URL
-- Classification language id
-- CU Status extended attribute id
-- CU Status PASS value
-- CU Status FAIL value
-- CU Error Message extended attribute id
-
-No secrets should be committed into source code.
-
-## 19. Assumptions
-
-1. Kong will forward the webhook request to the correct Node.js API endpoint.
-2. Webhook payload will contain project id either in body.projectId, body.project_id or Body string.
-3. ObjectId from webhook represents PM task id.
-4. InputParameters will be configured on the PM project.
-5. Required extended attributes will exist in PM project or activity.
-6. DAM parent classification path will already exist.
-7. Aprimo PM and DAM APIs will be available during processing.
-
-## 20. Risks and Mitigation
-
-| Risk | Impact | Mitigation |
+| Source Field | Internal Field | Notes |
 |---|---|---|
-| Missing projectId | Processing cannot continue | Validate payload and mark failure where possible |
-| Missing InputParameters | Classification cannot be created | Log clear error and update CU Error Message |
-| Activity id missing for Activity ObjectType | Activity attributes cannot be read | Fail with clear error message |
-| DAM classification not immediately ready | Relationship/follower update may fail | Retry selected DAM linking operations |
-| Wrong environment config | API may call wrong Aprimo environment | Use environment-specific config and review before deployment |
-| Secrets logged accidentally | Security issue | Mask sensitive fields in logs |
-| Task closed before status update | PM status may remain blank | Always update status before closing task |
+| `Body.project_id` | `projectId` | Primary PM project id source. |
+| `ObjectId` | `taskId` | PM task id used for closing the task. |
+| `Environment` | `environment` | Target environment. |
 
-## 21. Non-Functional Requirements
+---
 
-1. API should follow Node.js/TypeScript coding standards.
-2. API should use structured logging.
-3. API should handle errors centrally.
-4. API should avoid logging secrets.
-5. API should be reusable and maintainable.
-6. API should have unit test coverage for success, partial success and failure flows.
-7. API should follow SonarQube quality expectations.
-8. API should externalize environment-specific configuration.
+## 5. Response Design
 
-## 22. Open Points
+### 5.1 Success Response
 
-| Item | Status |
+```json
+{
+  "message": "PM classification webhook processed successfully",
+  "environment": "qa",
+  "triggerType": "PM_CLASSIFICATION_CREATE",
+  "projectId": 271114,
+  "status": "SUCCESS",
+  "warnings": []
+}
+```
+
+### 5.2 Partial Success Response
+
+```json
+{
+  "message": "PM classification webhook completed with warnings",
+  "environment": "qa",
+  "triggerType": "PM_CLASSIFICATION_CREATE",
+  "projectId": 271114,
+  "status": "PARTIAL_SUCCESS",
+  "warnings": [
+    "Relationship/follower processing failed."
+  ]
+}
+```
+
+### 5.3 Failure Response
+
+```json
+{
+  "message": "PM classification webhook processing failed",
+  "environment": "qa",
+  "triggerType": "PM_CLASSIFICATION_CREATE",
+  "projectId": 271114,
+  "status": "FAILED",
+  "warnings": []
+}
+```
+
+---
+
+## 6. Component Design
+
+| File/Class | Responsibility |
 |---|---|
-| Final Kong route URL | To be confirmed |
-| Final PM/DAM environment URLs | To be confirmed |
-| Final extended attribute ids | To be confirmed |
-| Final task close behavior in all scenarios | Confirmed as close after status update |
-| Final retry count and delay | To be confirmed |
-| Monitoring dashboard/alerting | To be confirmed |
+| `CuNodeWebhookController` | Receives webhook request, validates and normalizes payload, calls dispatcher/service, updates PM status, closes PM task, and returns response. |
+| `WebhookDispatcherService` | Routes webhook processing to the correct service based on trigger type. |
+| `PmClassificationWebhookService` | Main orchestration service for PM classification processing. |
+| `PmProjectService` | Fetches PM project details from Aprimo PM API. |
+| `PmActivityService` | Fetches PM activity details from Aprimo PM API when `ObjectType = Activity`. |
+| `DamClassificationService` | Creates DAM classifications and processes relationship/follower updates. |
+| `PmProjectStatusService` | Updates PM project `CU Status` and `CU Error Message`. |
+| `PmTaskService` | Closes PM task after status update. |
+| `inputParameterParser` | Parses and validates `InputParameters`. |
+| `httpRetry` | Provides reusable retry logic for selected external API operations. |
+| `aprimoErrorLogger` | Logs sanitized Aprimo API errors. |
+| `httpClient` | Common HTTP client for outbound Aprimo API calls. |
+| `env.ts` | Reads and validates environment configuration. |
 
-## 23. Summary
+---
 
-The PM Classification Webhook API automates classification creation and relationship/follower processing in Aprimo DAM based on PM project or activity data. The API receives webhook events through Kong, fetches required PM details, creates classifications in DAM, updates PM project status, and closes the PM task.
+## 7. Detailed Processing Flow
 
-The design keeps gateway concerns in Kong, business orchestration in the Node.js service layer, Aprimo communication in dedicated services, and error/logging logic centralized for maintainability and production support.
+```mermaid
+flowchart TD
+  A["Webhook request received"] --> B["Validate and normalize payload"]
+  B --> C["Extract projectId and taskId"]
+  C --> D["Fetch PM project details"]
+  D --> E["Read InputParameters from project extended attributes"]
+  E --> F["Parse and validate InputParameters"]
+  F --> G{"Any ObjectType = Activity?"}
+  G -->|"Yes"| H["Read activityId from project details"]
+  H --> I["Fetch PM activity details"]
+  G -->|"No"| J["Use project extended attributes"]
+  I --> K["Process each InputParameter"]
+  J --> K
+  K --> L["Create DAM classification"]
+  L --> M{"Relationship/follower configured?"}
+  M -->|"Yes"| N["Update relationship and follower"]
+  M -->|"No"| O["Skip relationship/follower processing"]
+  N --> P["Build processing result"]
+  O --> P
+  P --> Q["Update PM CU Status and CU Error Message"]
+  Q --> R["Close PM task"]
+  R --> S["Return response"]
+```
+
+### 7.1 Controller-Level Flow
+
+1. Receive webhook request.
+2. Validate and normalize payload.
+3. Extract `projectId` from `Body.project_id`.
+4. Extract `taskId` from `ObjectId`.
+5. Call dispatcher/service for processing.
+6. Update PM status based on processing result.
+7. Close PM task after status update attempt.
+8. Return response to caller.
+
+### 7.2 Service-Level Flow
+
+1. Fetch project details from Aprimo PM.
+2. Read `InputParameters` from project extended attributes.
+3. Parse and validate input parameters.
+4. Identify whether activity details are required.
+5. Fetch activity details only when at least one input parameter has `ObjectType = Activity`.
+6. Resolve classification name from project or activity extended attributes.
+7. Create DAM classification.
+8. Process relationship and follower mappings where configured.
+9. Return final processing status with warnings if any.
+
+---
+
+## 8. InputParameter and Attribute Resolution
+
+### 8.1 InputParameters Source
+
+`InputParameters` is read from PM project extended attributes. It controls how DAM classifications are created and how relationship/follower processing should be handled.
+
+### 8.2 InputParameter Model
+
+```ts
+export type ClassificationObjectType = 'Project' | 'Activity';
+
+export interface NormalizedInputParameter {
+  extAttrId: string | number;
+  objectType: ClassificationObjectType;
+  parentNamePath: string;
+  establishRelationship?: boolean;
+  relationshipField?: string;
+  addToFollowers?: boolean;
+  leaderExtAttr?: string | number;
+}
+```
+
+### 8.3 ObjectType Rules
+
+| ObjectType | Source of Classification Value |
+|---|---|
+| `Project` | PM project extended attributes. |
+| `Activity` | PM activity extended attributes. |
+| Missing | Default to `Project`. |
+| Any other value | Invalid configuration; fail processing. |
+
+### 8.4 Project Attribute Resolution
+
+When `ObjectType = Project`, the service reads the classification value from `projectDetails.extendedAttributes` using `ExtAttrID`.
+
+```text
+classificationName = value from projectDetails.extendedAttributes where eaId = ExtAttrID
+```
+
+### 8.5 Activity Attribute Resolution
+
+When `ObjectType = Activity`, the service reads `activityId` from PM project details, then calls the activity details API and reads the classification value from `activityDetails.extendedAttributes`.
+
+```text
+activityId = projectDetails.activityId
+classificationName = value from activityDetails.extendedAttributes where eaId = ExtAttrID
+```
+
+### 8.6 Example InputParameters
+
+```json
+[
+  {
+    "ExtAttrID": "36601",
+    "ObjectType": "Project",
+    "ParentNamePath": "Root/Business Unit",
+    "EstablishRelationship": false,
+    "AddToFollowers": false
+  },
+  {
+    "ExtAttrID": "36602",
+    "ObjectType": "Activity",
+    "ParentNamePath": "Root/Campaign",
+    "EstablishRelationship": true,
+    "RelationshipField": "Related Classification",
+    "AddToFollowers": true,
+    "LeaderExtAttr": "36601"
+  }
+]
+```
+
+---
+
+## 9. DAM Classification, Relationship and Follower Processing
+
+### 9.1 Classification Creation Flow
+
+1. Read parent classification path from `InputParameter`.
+2. Validate classification value from PM project/activity extended attribute.
+3. Fetch or validate parent classification from DAM if required.
+4. Create DAM classification under configured parent path.
+5. Store created classification id and input parameter mapping.
+
+### 9.2 Created Classification Tracking
+
+The service should track created classifications because relationship and follower processing may need leader and follower classification ids.
+
+```ts
+export interface CreatedClassification {
+  inputParameterExtAttrId: string | number;
+  classificationId: string | number;
+  classificationName: string;
+  parentNamePath: string;
+}
+```
+
+### 9.3 Relationship Processing
+
+Relationship processing is performed when `establishRelationship = true`.
+
+Expected behavior:
+
+1. Find follower classification created for the current input parameter.
+2. Find leader classification using `leaderExtAttr`.
+3. Validate relationship field.
+4. Update relationship field on follower classification.
+
+### 9.4 Follower Processing
+
+Follower processing is performed when `addToFollowers = true`.
+
+Expected behavior:
+
+1. Find leader classification.
+2. Find follower classification.
+3. Update leader classification `followerClassifications`.
+
+### 9.5 Partial Success Handling
+
+If classification creation succeeds but relationship/follower processing fails, the API may return `PARTIAL_SUCCESS` with warning details based on current processing logic.
+
+---
+
+## 10. PM Status and Task Close Design
+
+### 10.1 Final Status Rule
+
+The PM task must be closed in all processing conditions after status update is attempted.
+
+```text
+Status update should happen before task close.
+Task close should happen for SUCCESS, PARTIAL_SUCCESS and FAILED conditions.
+```
+
+### 10.2 Status Mapping
+
+| Processing Result | CU Status | CU Error Message | Close Task |
+|---|---|---|---|
+| `SUCCESS` | `PASS` | Blank/Cleared | Yes |
+| `PARTIAL_SUCCESS` | `FAIL` | Warning/error message | Yes |
+| `FAILED` | `FAIL` | Actual error message | Yes |
+
+### 10.3 Controller-Level Status Flow
+
+1. Process webhook.
+2. Receive processing result.
+3. If result is `SUCCESS`, call `markPass()`.
+4. If result is `PARTIAL_SUCCESS`, call `markFail()` with warning message.
+5. If result is `FAILED` or exception occurs, call `markFail()` with error message.
+6. After status update attempt, call `closeTask()`.
+7. Return final response or pass error to centralized error handler.
+
+### 10.4 Failure During Status Update
+
+If PM status update fails, the error must be logged clearly with `projectId`, `taskId`, `environment`, and sanitized error details.
+
+The task close behavior should follow the confirmed business rule: task close should still be attempted after status update attempt in all conditions.
+
+---
+
+## 11. External API Calls
+
+### 11.1 Aprimo PM APIs
+
+| API | Method | Purpose |
+|---|---|---|
+| `/api/projects/{projectId}` | `GET` | Fetch PM project details. |
+| `/api/activities/{activityId}` | `GET` | Fetch PM activity details. |
+| `/api/projects/{projectId}` | `PUT` / `PATCH` | Update project extended attributes for `CU Status` and `CU Error Message`. |
+| `/api/tasks/{taskId}/close` | `POST` | Close PM task. |
+
+### 11.2 Aprimo DAM APIs
+
+| API | Method | Purpose |
+|---|---|---|
+| `/api/core/classification` | `POST` | Create DAM classification. |
+| `/api/core/classification/{classificationId}` | `PUT` | Update relationship field or follower classifications. |
+| DAM field/classification lookup APIs | `GET` | Fetch required parent classification or field details. |
+
+### 11.3 Common Headers
+
+| Header | Purpose |
+|---|---|
+| `Authorization` | Bearer token for Aprimo APIs. |
+| `API-VERSION` | Aprimo API version header. |
+| `Content-Type` | Request body format. |
+| `Accept` | Expected response format. |
+
+---
+
+## 12. Error Handling and Retry Design
+
+### 12.1 Error Handling Principles
+
+- Use centralized error handling.
+- Throw or propagate proper `Error` objects.
+- Do not expose internal stack traces or sensitive details to API consumers.
+- Log sanitized Aprimo API errors.
+- Keep error messages clear enough for support and testing teams.
+
+### 12.2 Error Scenarios
+
+| Scenario | Expected Behavior |
+|---|---|
+| Missing `projectId` | Stop processing and return safe failure response. |
+| Missing `environment` | Stop processing and return safe failure response. |
+| Missing `taskId` | Continue processing if possible, skip task close, log warning. |
+| Project details API failure | Mark PM project FAIL if project id is available, close task if task id is available. |
+| `InputParameters` missing/invalid | Mark PM project FAIL, close task if task id is available. |
+| Activity id missing | Mark PM project FAIL, close task if task id is available. |
+| Activity details API failure | Mark PM project FAIL, close task if task id is available. |
+| DAM classification creation failure | Mark PM project FAIL, close task if task id is available. |
+| Relationship/follower failure | Return `PARTIAL_SUCCESS` or `FAILED` based on processing result; update PM status accordingly. |
+| PM status update failure | Log error with context. |
+| PM task close failure | Log error with context. |
+
+### 12.3 Retry Scope
+
+Retry should be applied only for selected DAM linking operations:
+
+- DAM relationship field update.
+- DAM follower classification update.
+
+Retry should not be applied globally to every external API call.
+
+### 12.4 Reason for Retry
+
+DAM classification creation may succeed, but the newly created classification may not be immediately ready for relationship/follower updates. This can cause temporary failures during linking operations.
+
+### 12.5 Retryable Conditions
+
+| Condition | Retry? | Notes |
+|---|---|---|
+| Network/transient HTTP error | Yes | Use common retry utility. |
+| HTTP 5xx | Yes | Transient server-side failure. |
+| HTTP 429 | Yes | Rate limit or throttling. |
+| HTTP 400 for selected DAM linking APIs | Yes | Only for relationship/follower update due to Aprimo readiness delay. |
+| HTTP 400 globally | No | Usually validation issue. |
+
+### 12.6 Retry Configuration
+
+| Setting | Value |
+|---|---|
+| Retry attempts | `3` |
+| Delay increment | `5000 ms` |
+| Scope | Relationship/follower update only |
+
+---
+
+## 13. Logging and Monitoring Design
+
+### 13.1 Logging Requirements
+
+The API should use structured logs for production troubleshooting.
+
+Important log fields:
+
+- `environment`
+- `projectId`
+- `taskId`
+- `eventId`
+- `triggerType`
+- `classificationId`
+- `inputParameterExtAttrId`
+- `objectType`
+- `processingStatus`
+- `warningCount`
+
+### 13.2 Logging Points
+
+| Step | Log Level | Purpose |
+|---|---|---|
+| Webhook received | `info` | Confirm request reached API. |
+| Payload normalized | `info` | Confirm `projectId`/`taskId` resolved. |
+| Project details fetch started/completed | `info` | Trace PM project API call. |
+| `InputParameters` resolved | `info` | Confirm configuration found. |
+| Activity details fetch started/completed | `info` | Trace activity API call when required. |
+| Classification creation started/completed | `info` | Trace DAM classification creation. |
+| Relationship/follower retry | `warn` | Show retry attempt and delay. |
+| Relationship/follower failure | `error` | Capture linking failure. |
+| PM status update started/completed | `info` | Confirm PASS/FAIL update. |
+| PM task close started/completed | `info` | Confirm task close. |
+| Unexpected error | `error` | Capture sanitized failure details. |
+
+### 13.3 Sensitive Data Logging Rule
+
+Do not log:
+
+- `client_secret`
+- `client_id`
+- `access_token`
+- `Authorization` header
+- Passwords
+- Full sensitive payload data
+
+Sensitive values should be masked before logging.
+
+---
+
+## 14. Configuration and Security Design
+
+### 14.1 Configuration Variables
+
+Expected configuration should be externalized using environment variables or approved secret management.
+
+| Variable | Purpose | Secret? |
+|---|---|---|
+| `APRIMO_PM_BASE_URL` | Aprimo PM base URL. | No |
+| `APRIMO_DAM_BASE_URL` | Aprimo DAM base URL. | No |
+| `APRIMO_TOKEN_URL` | Aprimo token endpoint. | No |
+| `APRIMO_CLIENT_ID` | Aprimo OAuth client id. | Yes |
+| `APRIMO_CLIENT_SECRET` | Aprimo OAuth client secret. | Yes |
+| `APRIMO_CLASSIFICATION_LANGUAGE_ID` | DAM classification language id. | No |
+| `CU_STATUS_EA_ID` | PM CU Status extended attribute id. | No |
+| `CU_STATUS_PASS_VALUE` | PASS value for CU Status. | No |
+| `CU_STATUS_FAIL_VALUE` | FAIL value for CU Status. | No |
+| `CU_ERROR_MESSAGE_EA_ID` | PM CU Error Message extended attribute id. | No |
+
+
+
+---
+
+## 15. File-Level Implementation Checklist
+
+| Area | Expected Implementation |
+|---|---|
+| Controller | Keep request validation, normalization, response handling, and final status/task close orchestration. |
+| Dispatcher | Route supported webhook trigger types to the correct processing service. |
+| Service | Keep business processing and orchestration. |
+| PM clients/services | Keep PM project, activity, status, and task close API calls separate. |
+| DAM service | Keep classification creation and relationship/follower processing separate. |
+| Retry utility | Keep reusable retry logic outside service classes. |
+| Parser utility | Keep `InputParameters` parsing and `ObjectType` validation separate. |
+| Logger utility | Keep error sanitization and structured logging reusable. |
+| Config | Keep environment variables centralized and validated. |
+| Tests | Cover success, validation, partial success, failure, retry, and logging-sensitive paths. |
+| Documentation | Keep API endpoint, configuration, and processing behavior updated when implementation changes. |
+
